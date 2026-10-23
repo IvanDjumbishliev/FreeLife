@@ -2,17 +2,16 @@
 //!
 //! Errors are returned as `String` so they serialize straight to the JS side.
 
+use std::path::PathBuf;
 use std::time::Duration;
 
-use freelife_core::discovery::DiscoveredDevice;
-use freelife_core::{DeviceInfo, OsType};
-use freelife_transfer::{chunk_count, OutgoingFile};
+use freelife_core::{DeviceId, DeviceInfo, OsType};
 use serde::Serialize;
 use tauri::State;
 
 use crate::AppState;
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct DeviceView {
     id: String,
     name: String,
@@ -32,43 +31,25 @@ impl From<&DeviceInfo> for DeviceView {
 }
 
 #[derive(Serialize)]
-pub struct Peer {
+pub struct NearbyDevice {
     device: DeviceView,
     addresses: Vec<String>,
-    port: u16,
-}
-
-impl From<&DiscoveredDevice> for Peer {
-    fn from(d: &DiscoveredDevice) -> Self {
-        Self {
-            device: DeviceView::from(&d.info),
-            addresses: d.addresses.iter().map(ToString::to_string).collect(),
-            port: d.port,
-        }
-    }
+    paired: bool,
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TransferReceipt {
-    transfer_id: String,
-    chunks: u64,
+pub struct PairedDevice {
+    device: DeviceView,
+    connected: bool,
 }
 
-fn find_peer(state: &AppState, peer_id: &str) -> Result<DiscoveredDevice, String> {
-    state
-        .peers
-        .lock()
-        .map_err(|e| e.to_string())?
-        .iter()
-        .find(|p| p.info.id.to_string() == peer_id)
-        .cloned()
-        .ok_or_else(|| format!("unknown peer {peer_id}; scan again"))
+fn parse_id(id: &str) -> Result<DeviceId, String> {
+    id.parse().map_err(|_| format!("invalid device id {id:?}"))
 }
 
 #[tauri::command]
 pub fn get_device_info(state: State<'_, AppState>) -> DeviceView {
-    DeviceView::from(&state.device)
+    DeviceView::from(state.node.device())
 }
 
 /// Browse the LAN for `timeout_ms` and return every FreeLife device seen.
@@ -76,66 +57,93 @@ pub fn get_device_info(state: State<'_, AppState>) -> DeviceView {
 pub async fn discover_devices(
     state: State<'_, AppState>,
     timeout_ms: Option<u64>,
-) -> Result<Vec<Peer>, String> {
-    let discovery = state
-        .discovery
-        .as_ref()
-        .ok_or("mDNS discovery is unavailable on this system")?;
-    let mut rx = discovery
-        .discover_devices()
+) -> Result<Vec<NearbyDevice>, String> {
+    let node = &state.node;
+    if !node.mdns_available() {
+        return Err("mDNS discovery is unavailable on this system".into());
+    }
+    let found = node
+        .discover(Duration::from_millis(timeout_ms.unwrap_or(2000)))
         .await
         .map_err(|e| e.to_string())?;
-
-    let mut found: Vec<DiscoveredDevice> = Vec::new();
-    let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms.unwrap_or(2000));
-    while let Ok(Some(device)) = tokio::time::timeout_at(deadline, rx.recv()).await {
-        found.retain(|d| d.info.id != device.info.id);
-        found.push(device);
-    }
-    // Dropping `rx` stops the browse.
-
-    let peers = found.iter().map(Peer::from).collect();
-    *state.peers.lock().map_err(|e| e.to_string())? = found;
-    Ok(peers)
+    let views = found
+        .iter()
+        .map(|d| NearbyDevice {
+            device: DeviceView::from(&d.info),
+            addresses: d.socket_addrs().map(|a| a.to_string()).collect(),
+            paired: node.is_paired(d.info.id),
+        })
+        .collect();
+    *state.nearby.lock().map_err(|e| e.to_string())? = found;
+    Ok(views)
 }
 
-/// STUB: builds the clipboard message but doesn't send it yet.
 #[tauri::command]
-pub fn send_clipboard(
+pub fn list_paired_devices(state: State<'_, AppState>) -> Vec<PairedDevice> {
+    state
+        .node
+        .paired_devices()
+        .iter()
+        .map(|d| PairedDevice {
+            device: DeviceView::from(&d.info()),
+            connected: state.node.is_connected(d.id),
+        })
+        .collect()
+}
+
+/// Pair with a device from the last scan. Both sides show a code via the
+/// `pairing-prompt` event; this resolves once both users have answered.
+#[tauri::command]
+pub async fn pair_device(
     state: State<'_, AppState>,
-    peer_id: String,
+    device_id: String,
+) -> Result<DeviceView, String> {
+    let id = parse_id(&device_id)?;
+    let peer = state.node.pair(id).await.map_err(|e| e.to_string())?;
+    Ok(DeviceView::from(&peer))
+}
+
+#[tauri::command]
+pub fn respond_pairing(state: State<'_, AppState>, request_id: u64, accept: bool) -> bool {
+    state.node.respond_pairing(request_id, accept)
+}
+
+#[tauri::command]
+pub async fn unpair_device(state: State<'_, AppState>, device_id: String) -> Result<bool, String> {
+    let id = parse_id(&device_id)?;
+    state.node.unpair(id).await.map_err(|e| e.to_string())
+}
+
+/// Send a file to a paired device. Progress arrives as `transfer-event`s;
+/// this resolves when the whole file has been sent.
+#[tauri::command]
+pub async fn send_file(
+    state: State<'_, AppState>,
+    device_id: String,
+    file_path: String,
+) -> Result<(), String> {
+    let id = parse_id(&device_id)?;
+    state
+        .node
+        .send_file(id, &PathBuf::from(file_path))
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn send_clipboard(
+    state: State<'_, AppState>,
+    device_id: String,
     text: String,
 ) -> Result<(), String> {
-    let peer = find_peer(&state, &peer_id)?;
-    let _msg = freelife_transfer::clipboard_text(text);
-    // TODO: pair, then `ConnectionManager::send(peer.info.id, _msg)`.
-    eprintln!("[stub] would send clipboard to {}", peer.info.name);
-    Ok(())
-}
-
-/// STUB: reads the file and prepares the chunked transfer, but doesn't send it.
-#[tauri::command]
-pub fn send_file(
-    state: State<'_, AppState>,
-    peer_id: String,
-    path: String,
-) -> Result<TransferReceipt, String> {
-    let peer = find_peer(&state, &peer_id)?;
-    let data = std::fs::read(&path).map_err(|e| format!("{path}: {e}"))?;
-    let name = std::path::Path::new(&path)
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "file".into());
-
-    let file = OutgoingFile::new(name, data);
-    let chunks = chunk_count(file.size());
-    // TODO: send `file.request()` then `file.chunks()` via the ConnectionManager.
-    eprintln!(
-        "[stub] would send {} ({chunks} chunks) to {}",
-        file.filename, peer.info.name
-    );
-    Ok(TransferReceipt {
-        transfer_id: file.id.to_string(),
-        chunks,
-    })
+    let id = parse_id(&device_id)?;
+    let conn = state
+        .node
+        .connection_to(id)
+        .await
+        .map_err(|e| e.to_string())?;
+    conn.send(freelife_transfer::clipboard_text(text))
+        .await
+        .map_err(|e| e.to_string())
 }

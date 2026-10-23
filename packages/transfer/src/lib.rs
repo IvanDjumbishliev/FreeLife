@@ -1,40 +1,48 @@
-//! File and clipboard transfer.
+//! AirShare: file transfer between paired FreeLife devices.
 //!
-//! A file goes out as a [`FreeLifeMessage::FileTransferRequest`] followed by
-//! fixed-size [`FreeLifeMessage::FileChunk`]s. The receiver reassembles them
-//! with [`IncomingFile`] and verifies the SHA-256 once all bytes arrive.
+//! A file goes out as one [`FreeLifeMessage::FileTransferRequest`] (name,
+//! size, SHA-256 of the whole file) followed by [`CHUNK_SIZE`]
+//! [`FreeLifeMessage::FileChunk`]s.
 //!
-//! This layer only produces and consumes messages; sending them is the job of
-//! [`freelife_core::ConnectionManager`].
+//! - [`send_file`] streams a file over an [`ActiveConnection`] and yields
+//!   [`TransferProgress`].
+//! - [`FileReceiver`] reassembles incoming chunks in any order, verifies the
+//!   checksum, and saves the file to the download directory.
+//! - [`node::Node`] wires both into a running device (identity, pairing,
+//!   discovery, connections). This is what the apps use.
+//!
+//! There is no acknowledgement message yet, so "sent" means handed to the
+//! encrypted connection, not confirmed by the receiver. Completion on the
+//! receiving side is reported by its own [`TransferEvent::TransferComplete`].
+//!
+//! [`ActiveConnection`]: freelife_core::ActiveConnection
 
-use freelife_core::{ClipboardContentType, FreeLifeMessage};
-use sha2::{Digest, Sha256};
+mod filename;
+pub mod node;
+mod progress;
+mod receiver;
+mod sender;
+
+use std::path::PathBuf;
+
+use freelife_core::{ClipboardContentType, DeviceId, FreeLifeMessage};
 use uuid::Uuid;
 
+pub use filename::sanitize_filename;
+pub use progress::{Direction, TransferEvent, TransferProgress};
+pub use receiver::{default_download_dir, FileReceiver, ReceiverConfig};
+pub use sender::{send_file, send_file_with_id};
+
 pub const CHUNK_SIZE: usize = 256 * 1024;
-
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum Error {
-    #[error("chunk for transfer {got} does not belong to transfer {expected}")]
-    WrongTransfer { expected: Uuid, got: Uuid },
-    #[error("chunk {got} arrived out of order (expected {expected})")]
-    OutOfOrder { expected: u64, got: u64 },
-    #[error("received more data than the {expected} bytes announced")]
-    TooMuchData { expected: u64 },
-    #[error("transfer incomplete: {got} of {expected} bytes")]
-    Incomplete { expected: u64, got: u64 },
-    #[error("checksum mismatch")]
-    ChecksumMismatch,
-}
-
-pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub fn chunk_count(size: u64) -> u64 {
     size.div_ceil(CHUNK_SIZE as u64)
 }
 
-pub fn sha256(data: &[u8]) -> [u8; 32] {
-    Sha256::digest(data).into()
+/// A fresh id for [`send_file_with_id`] or
+/// [`node::Node::send_file_as`].
+pub fn new_transfer_id() -> Uuid {
+    Uuid::new_v4()
 }
 
 pub fn clipboard_text(text: impl Into<String>) -> FreeLifeMessage {
@@ -44,142 +52,82 @@ pub fn clipboard_text(text: impl Into<String>) -> FreeLifeMessage {
     }
 }
 
-/// A file held in memory, ready to be sent.
-///
-/// TODO: stream from disk instead of buffering the whole file.
-pub struct OutgoingFile {
-    pub id: Uuid,
-    pub filename: String,
-    data: Vec<u8>,
+#[derive(Debug, thiserror::Error)]
+pub enum TransferError {
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error(transparent)]
+    Core(#[from] freelife_core::Error),
+
+    #[error("{} is not a regular file", .0.display())]
+    NotAFile(PathBuf),
+
+    #[error("the file changed while it was being sent")]
+    FileChanged,
+
+    #[error("invalid file name")]
+    InvalidFilename,
+
+    #[error("file is {size} bytes, over the {max}-byte limit")]
+    TooLarge { size: u64, max: u64 },
+
+    #[error("transfer {0} is already in progress")]
+    Duplicate(Uuid),
+
+    #[error("chunk {index} is out of range")]
+    ChunkOutOfRange { index: u64 },
+
+    #[error("chunk {index} has {got} bytes, expected {expected}")]
+    ChunkSize {
+        index: u64,
+        got: usize,
+        expected: u64,
+    },
+
+    #[error("checksum mismatch: the file was corrupted in transit")]
+    ChecksumMismatch,
+
+    #[error("transfer stalled: no data received for too long")]
+    Stalled,
+
+    #[error("transfer cancelled")]
+    Cancelled,
+
+    #[error("device {0} is not paired")]
+    NotPaired(DeviceId),
+
+    #[error("device {0} could not be reached")]
+    Unreachable(DeviceId),
 }
 
-impl OutgoingFile {
-    pub fn new(filename: impl Into<String>, data: Vec<u8>) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            filename: filename.into(),
-            data,
-        }
-    }
+pub type Result<T, E = TransferError> = std::result::Result<T, E>;
 
-    pub fn size(&self) -> u64 {
-        self.data.len() as u64
-    }
+/// SHA-256 of a file, computed on a blocking thread.
+pub(crate) async fn hash_file(path: PathBuf) -> Result<[u8; 32]> {
+    tokio::task::spawn_blocking(move || {
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
 
-    pub fn request(&self) -> FreeLifeMessage {
-        FreeLifeMessage::FileTransferRequest {
-            id: self.id,
-            filename: self.filename.clone(),
-            size: self.size(),
-            checksum: sha256(&self.data),
+        let mut file = std::fs::File::open(path)?;
+        let mut hasher = Sha256::new();
+        let mut buf = vec![0u8; 1024 * 1024];
+        loop {
+            let n = file.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
         }
-    }
-
-    pub fn chunks(&self) -> impl Iterator<Item = FreeLifeMessage> + '_ {
-        self.data
-            .chunks(CHUNK_SIZE)
-            .enumerate()
-            .map(|(i, chunk)| FreeLifeMessage::FileChunk {
-                id: self.id,
-                index: i as u64,
-                data: chunk.to_vec(),
-            })
-    }
-}
-
-/// Reassembles a file from in-order chunks.
-pub struct IncomingFile {
-    pub id: Uuid,
-    pub filename: String,
-    size: u64,
-    checksum: [u8; 32],
-    next_index: u64,
-    buf: Vec<u8>,
-}
-
-impl IncomingFile {
-    pub fn new(id: Uuid, filename: String, size: u64, checksum: [u8; 32]) -> Self {
-        Self {
-            id,
-            filename,
-            size,
-            checksum,
-            next_index: 0,
-            buf: Vec::new(),
-        }
-    }
-
-    pub fn push_chunk(&mut self, id: Uuid, index: u64, data: &[u8]) -> Result<()> {
-        if id != self.id {
-            return Err(Error::WrongTransfer {
-                expected: self.id,
-                got: id,
-            });
-        }
-        if index != self.next_index {
-            return Err(Error::OutOfOrder {
-                expected: self.next_index,
-                got: index,
-            });
-        }
-        if self.buf.len() as u64 + data.len() as u64 > self.size {
-            return Err(Error::TooMuchData {
-                expected: self.size,
-            });
-        }
-        self.buf.extend_from_slice(data);
-        self.next_index += 1;
-        Ok(())
-    }
-
-    pub fn is_complete(&self) -> bool {
-        self.buf.len() as u64 == self.size
-    }
-
-    pub fn progress(&self) -> f64 {
-        if self.size == 0 {
-            1.0
-        } else {
-            self.buf.len() as f64 / self.size as f64
-        }
-    }
-
-    pub fn finish(self) -> Result<Vec<u8>> {
-        if !self.is_complete() {
-            return Err(Error::Incomplete {
-                expected: self.size,
-                got: self.buf.len() as u64,
-            });
-        }
-        if sha256(&self.buf) != self.checksum {
-            return Err(Error::ChecksumMismatch);
-        }
-        Ok(self.buf)
-    }
+        Ok(hasher.finalize().into())
+    })
+    .await
+    .map_err(|e| TransferError::Io(std::io::Error::other(e)))?
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn receive(out: &OutgoingFile) -> Result<Vec<u8>> {
-        let FreeLifeMessage::FileTransferRequest {
-            id,
-            filename,
-            size,
-            checksum,
-        } = out.request()
-        else {
-            unreachable!()
-        };
-        let mut incoming = IncomingFile::new(id, filename, size, checksum);
-        for msg in out.chunks() {
-            if let FreeLifeMessage::FileChunk { id, index, data } = msg {
-                incoming.push_chunk(id, index, &data)?;
-            }
-        }
-        incoming.finish()
-    }
 
     #[test]
     fn chunk_count_rounds_up() {
@@ -187,49 +135,6 @@ mod tests {
         assert_eq!(chunk_count(1), 1);
         assert_eq!(chunk_count(CHUNK_SIZE as u64), 1);
         assert_eq!(chunk_count(CHUNK_SIZE as u64 + 1), 2);
-    }
-
-    #[test]
-    fn multi_chunk_round_trip() {
-        let data: Vec<u8> = (0..CHUNK_SIZE * 2 + 17).map(|i| i as u8).collect();
-        let out = OutgoingFile::new("blob.bin", data.clone());
-        assert_eq!(out.chunks().count() as u64, chunk_count(out.size()));
-        assert_eq!(receive(&out).unwrap(), data);
-    }
-
-    #[test]
-    fn empty_file_round_trip() {
-        assert_eq!(receive(&OutgoingFile::new("empty", vec![])).unwrap(), b"");
-    }
-
-    #[test]
-    fn rejects_out_of_order_and_foreign_chunks() {
-        let id = Uuid::new_v4();
-        let mut f = IncomingFile::new(id, "f".into(), 2, sha256(b"ab"));
-        assert_eq!(
-            f.push_chunk(id, 1, b"b"),
-            Err(Error::OutOfOrder {
-                expected: 0,
-                got: 1
-            })
-        );
-        assert!(matches!(
-            f.push_chunk(Uuid::new_v4(), 0, b"a"),
-            Err(Error::WrongTransfer { .. })
-        ));
-    }
-
-    #[test]
-    fn rejects_overflow_and_corruption() {
-        let id = Uuid::new_v4();
-        let mut f = IncomingFile::new(id, "f".into(), 2, sha256(b"ab"));
-        assert_eq!(
-            f.push_chunk(id, 0, b"abc"),
-            Err(Error::TooMuchData { expected: 2 })
-        );
-        f.push_chunk(id, 0, b"xx").unwrap();
-        assert!(f.is_complete());
-        assert_eq!(f.finish(), Err(Error::ChecksumMismatch));
     }
 
     #[test]
@@ -241,5 +146,16 @@ mod tests {
                 payload: b"hi".to_vec(),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn hash_file_matches_in_memory_hash() {
+        use sha2::{Digest, Sha256};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f");
+        let data: Vec<u8> = (0..3_000_000u32).map(|i| (i % 251) as u8).collect();
+        std::fs::write(&path, &data).unwrap();
+        let expected: [u8; 32] = Sha256::digest(&data).into();
+        assert_eq!(hash_file(path).await.unwrap(), expected);
     }
 }

@@ -5,6 +5,7 @@
 //! (Android Keystore / iOS Keychain).
 
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use ring::rand::{SecureRandom, SystemRandom};
@@ -32,6 +33,51 @@ impl KeyStore for MemoryKeyStore {
 
     fn save(&self, secret: &[u8]) -> Result<()> {
         *self.0.lock().expect("lock poisoned") = Some(secret.to_vec());
+        Ok(())
+    }
+}
+
+/// Stores the seed in a file only this user can read.
+///
+/// For platforms without a keychain the `keyring` crate supports (Android,
+/// iOS). Put it in the app's private data directory. It's weaker than a
+/// hardware-backed keystore: anyone with root or a device backup can read it.
+pub struct FileKeyStore {
+    path: PathBuf,
+}
+
+impl FileKeyStore {
+    pub const DEFAULT_FILE: &'static str = "identity.key";
+
+    pub fn new(path: impl Into<PathBuf>) -> Self {
+        Self { path: path.into() }
+    }
+}
+
+impl KeyStore for FileKeyStore {
+    fn load(&self) -> Result<Option<Vec<u8>>> {
+        match std::fs::read(&self.path) {
+            Ok(secret) => Ok(Some(secret)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    fn save(&self, secret: &[u8]) -> Result<()> {
+        use std::io::Write;
+
+        if let Some(dir) = self.path.parent().filter(|d| !d.as_os_str().is_empty()) {
+            std::fs::create_dir_all(dir)?;
+        }
+        let tmp = self.path.with_extension("tmp");
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let mut file = options.open(&tmp)?;
+        file.write_all(secret)?;
+        file.sync_all()?;
+        std::fs::rename(&tmp, &self.path)?;
         Ok(())
     }
 }
@@ -175,6 +221,23 @@ mod tests {
         let second = Identity::load_or_generate(store.clone()).await.unwrap();
         assert_eq!(first.public_key(), second.public_key());
         assert_eq!(store.load().unwrap().unwrap().len(), SEED_LEN);
+    }
+
+    #[tokio::test]
+    async fn file_key_store_persists_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("keys").join(FileKeyStore::DEFAULT_FILE);
+        let store: Arc<dyn KeyStore> = Arc::new(FileKeyStore::new(&path));
+        let first = Identity::load_or_generate(store.clone()).await.unwrap();
+        let second = Identity::load_or_generate(store).await.unwrap();
+        assert_eq!(first.public_key(), second.public_key());
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
     }
 
     #[test]

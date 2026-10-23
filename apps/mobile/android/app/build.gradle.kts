@@ -47,3 +47,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // FileProvider, NotificationCompat and IntentCompat for AirShare.
+    implementation("androidx.core:core-ktx:1.19.1")
+}

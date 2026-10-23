@@ -3,6 +3,7 @@
 //! - [`discovery`]: advertise and find devices on the LAN via mDNS.
 //! - [`identity`]: the per-device Ed25519 identity key, kept in the OS keychain.
 //! - [`pairing`]: PIN-confirmed handshake that establishes mutual trust.
+//! - [`prompts`]: routes pairing codes to a UI and waits for the answer.
 //! - [`trust`]: the `trusted_devices.json` store of paired devices.
 //! - [`protocol`]: [`FreeLifeMessage`] and length-prefixed bincode framing.
 //! - [`tls`]: TLS 1.3 configs authenticated by pinned identity keys.
@@ -15,11 +16,12 @@ pub mod discovery;
 mod error;
 pub mod identity;
 pub mod pairing;
+pub mod prompts;
 pub mod protocol;
 pub mod tls;
 pub mod trust;
 
-pub use connection::{ConnectionConfig, ConnectionManager};
+pub use connection::{ActiveConnection, ConnectionConfig, ConnectionManager};
 pub use device::{DeviceId, DeviceInfo, OsType, PUBLIC_KEY_LEN};
 pub use error::{Error, PairingError, Result};
 pub use identity::Identity;

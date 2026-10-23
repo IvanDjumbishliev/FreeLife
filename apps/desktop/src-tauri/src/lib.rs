@@ -1,19 +1,20 @@
 mod commands;
+mod events;
 
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use freelife_core::discovery::{DiscoveredDevice, Discovery};
-use freelife_core::identity::{Identity, KeyStore, KeyringStore};
-use freelife_core::{DeviceInfo, OsType};
+use freelife_core::discovery::DiscoveredDevice;
+use freelife_core::identity::{FileKeyStore, KeyStore, KeyringStore};
+use freelife_core::OsType;
+use freelife_transfer::node::{Node, NodeConfig};
+use tauri::Manager;
 
 /// State shared by all commands.
 pub struct AppState {
-    pub identity: Arc<Identity>,
-    pub device: DeviceInfo,
-    /// `None` if the mDNS daemon couldn't start (e.g. no usable network interface).
-    pub discovery: Option<Discovery>,
-    /// Peers from the most recent scan, used to resolve `peer_id` arguments.
-    pub peers: Mutex<Vec<DiscoveredDevice>>,
+    pub node: Arc<Node>,
+    /// Devices from the most recent scan.
+    pub nearby: Mutex<Vec<DiscoveredDevice>>,
 }
 
 fn device_name() -> String {
@@ -22,40 +23,58 @@ fn device_name() -> String {
         .unwrap_or_else(|_| "FreeLife Desktop".into())
 }
 
-fn load_identity() -> Identity {
-    let store: Arc<dyn KeyStore> = Arc::new(KeyringStore::default());
-    tauri::async_runtime::block_on(Identity::load_or_generate(store)).unwrap_or_else(|e| {
-        eprintln!("warning: OS keychain unavailable ({e}); using a temporary identity");
-        Identity::generate().expect("system RNG unavailable")
-    })
+/// The OS keychain if it works here, else a private file in the app data
+/// directory. A keychain can be missing on Linux without a Secret Service.
+fn key_store(data_dir: &Path) -> Arc<dyn KeyStore> {
+    let keyring = KeyringStore::default();
+    match keyring.load() {
+        Ok(_) => Arc::new(keyring),
+        Err(e) => {
+            tracing::warn!(error = %e, "OS keychain unavailable; storing the identity key in the app data directory");
+            Arc::new(FileKeyStore::new(data_dir.join(FileKeyStore::DEFAULT_FILE)))
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let identity = Arc::new(load_identity());
-    // Every desktop target is covered; other Unixes are closest to Linux.
-    let os = OsType::current().unwrap_or(OsType::Linux);
-    let device = identity.device_info(device_name(), os);
-    let discovery = Discovery::new()
-        .inspect_err(|e| eprintln!("warning: mDNS unavailable: {e}"))
-        .ok();
-    // TODO: start a ConnectionManager listener and `discovery.advertise()` it
-    // once the pairing UI exists. Until then we only browse.
-
-    let state = AppState {
-        identity,
-        device,
-        discovery,
-        peers: Mutex::new(Vec::new()),
-    };
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info,mdns_sd=warn".into()),
+        )
+        .init();
 
     tauri::Builder::default()
-        .manage(state)
+        .plugin(tauri_plugin_notification::init())
+        .setup(|app| {
+            let data_dir = app.path().app_data_dir()?;
+            // Every desktop target is covered; other Unixes are closest to Linux.
+            let os = OsType::current().unwrap_or(OsType::Linux);
+            let config = NodeConfig::new(device_name(), os, key_store(&data_dir), data_dir);
+            let node = tauri::async_runtime::block_on(Node::start(config))?;
+            tracing::info!(
+                port = node.port(),
+                mdns = node.mdns_available(),
+                "FreeLife node started"
+            );
+
+            events::forward(app.handle().clone(), node.clone());
+            app.manage(AppState {
+                node,
+                nearby: Mutex::new(Vec::new()),
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_device_info,
             commands::discover_devices,
-            commands::send_clipboard,
+            commands::list_paired_devices,
+            commands::pair_device,
+            commands::respond_pairing,
+            commands::unpair_device,
             commands::send_file,
+            commands::send_clipboard,
         ])
         .run(tauri::generate_context!())
         .expect("error while running FreeLife desktop");

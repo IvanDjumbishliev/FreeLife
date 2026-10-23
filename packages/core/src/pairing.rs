@@ -81,6 +81,11 @@ impl PairingCode {
     pub fn value(self) -> u32 {
         self.0
     }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(value: u32) -> Self {
+        Self(value)
+    }
 }
 
 impl fmt::Display for PairingCode {

@@ -22,5 +22,8 @@ tauri-build = { version = "2", features = [] }
 freelife-core = { path = "../../../packages/core" }
 freelife-transfer = { path = "../../../packages/transfer" }
 tauri = { version = "2", features = [] }
+tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -11,6 +11,9 @@ dependencies:
     sdk: flutter
   # Must match the `flutter_rust_bridge` version in rust/Cargo.toml exactly.
   flutter_rust_bridge: 2.13.0
+  # Builds rust/ into the app via cargokit.
+  rust_lib_freelife:
+    path: rust_builder
 
 dev_dependencies:
   flutter_test:

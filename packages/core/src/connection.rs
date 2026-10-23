@@ -61,9 +61,45 @@ impl Default for ConnectionConfig {
 /// Messages from connected devices.
 pub type Incoming = mpsc::Receiver<(DeviceId, FreeLifeMessage)>;
 
-struct ActiveConnection {
-    conn_id: u64,
+/// Handle for sending to one connected device. Cheap to clone; becomes
+/// unusable (sends fail with [`Error::NotConnected`]) once the session ends.
+#[derive(Clone, Debug)]
+pub struct ActiveConnection {
+    device_id: DeviceId,
     outgoing: mpsc::Sender<FreeLifeMessage>,
+}
+
+impl ActiveConnection {
+    /// Wrap a raw message queue. [`ConnectionManager`] builds these for its
+    /// sessions; this constructor is for in-process transports and tests.
+    pub fn from_sender(device_id: DeviceId, outgoing: mpsc::Sender<FreeLifeMessage>) -> Self {
+        Self {
+            device_id,
+            outgoing,
+        }
+    }
+
+    pub fn device_id(&self) -> DeviceId {
+        self.device_id
+    }
+
+    /// Queue `message`. Waits while the send queue is full, which gives
+    /// senders backpressure.
+    pub async fn send(&self, message: FreeLifeMessage) -> Result<()> {
+        self.outgoing
+            .send(message)
+            .await
+            .map_err(|_| Error::NotConnected(self.device_id))
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.outgoing.is_closed()
+    }
+}
+
+struct SessionEntry {
+    conn_id: u64,
+    handle: ActiveConnection,
     task: AbortHandle,
 }
 
@@ -73,7 +109,7 @@ struct Inner {
     trust: Arc<TrustStore>,
     config: ConnectionConfig,
     acceptor: TlsAcceptor,
-    connections: Mutex<HashMap<DeviceId, ActiveConnection>>,
+    connections: Mutex<HashMap<DeviceId, SessionEntry>>,
     incoming: mpsc::Sender<(DeviceId, FreeLifeMessage)>,
     next_conn_id: AtomicU64,
     listener: Mutex<Option<JoinHandle<()>>>,
@@ -229,21 +265,23 @@ impl ConnectionManager {
         Ok(())
     }
 
-    /// Queue `message` for `device_id`. Waits if the connection's send
-    /// queue is full.
-    pub async fn send(&self, device_id: DeviceId, message: FreeLifeMessage) -> Result<()> {
-        let sender = self
-            .inner
+    /// The current session with `device_id`, if any.
+    pub fn connection(&self, device_id: DeviceId) -> Option<ActiveConnection> {
+        self.inner
             .connections
             .lock()
             .expect("lock poisoned")
             .get(&device_id)
-            .map(|c| c.outgoing.clone())
-            .ok_or(Error::NotConnected(device_id))?;
-        sender
+            .map(|c| c.handle.clone())
+    }
+
+    /// Queue `message` for `device_id`. Waits if the connection's send
+    /// queue is full.
+    pub async fn send(&self, device_id: DeviceId, message: FreeLifeMessage) -> Result<()> {
+        self.connection(device_id)
+            .ok_or(Error::NotConnected(device_id))?
             .send(message)
             .await
-            .map_err(|_| Error::NotConnected(device_id))
     }
 
     pub fn is_connected(&self, device_id: DeviceId) -> bool {
@@ -360,9 +398,9 @@ impl ConnectionManager {
         ));
         let replaced = connections.insert(
             peer,
-            ActiveConnection {
+            SessionEntry {
                 conn_id,
-                outgoing: tx,
+                handle: ActiveConnection::from_sender(peer, tx),
                 task: task.abort_handle(),
             },
         );

@@ -3,6 +3,7 @@ package dev.freelife.mobile
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.BatteryManager
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
@@ -11,10 +12,26 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private var airShare: AirShareChannel? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DEVICE_CHANNEL)
-            .setMethodCallHandler(::onDeviceCall)
+        val messenger = flutterEngine.dartExecutor.binaryMessenger
+        MethodChannel(messenger, DEVICE_CHANNEL).setMethodCallHandler(::onDeviceCall)
+        airShare = AirShareChannel(this, messenger).also { it.handleIntent(intent) }
+    }
+
+    // launchMode="singleTop": shares while we're open arrive here.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        airShare?.handleIntent(intent)
+    }
+
+    override fun onDestroy() {
+        airShare?.dispose()
+        airShare = null
+        super.onDestroy()
     }
 
     // Keep method names in sync with lib/platform/device_channel.dart.

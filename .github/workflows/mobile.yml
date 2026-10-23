@@ -32,6 +32,16 @@ jobs:
           channel: stable
           cache: true
 
+      # cargokit (rust_builder/) compiles rust/ for each Android ABI during
+      # the Gradle build.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/mobile/rust -> ../build/build_tool
+
       - name: Install dependencies
         run: flutter pub get
 

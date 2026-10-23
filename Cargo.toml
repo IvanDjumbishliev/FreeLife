@@ -28,9 +28,12 @@ freelife-transfer = { path = "packages/transfer" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_bytes = "0.11"
 thiserror = "2"
 uuid = { version = "1", features = ["v4", "v8", "serde"] }
 tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+dirs = "7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 mdns-sd = "0.21"
@@ -47,3 +50,11 @@ sha2 = "0.10"
 axum = "0.8"
 tower = "0.5"
 http-body-util = "0.1"
+
+# Hashing 50 MB test files is painfully slow unoptimized; these crates are
+# hot loops we never need to step through.
+[profile.dev.package.sha2]
+opt-level = 3
+
+[profile.dev.package.ring]
+opt-level = 3

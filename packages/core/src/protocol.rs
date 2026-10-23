@@ -29,6 +29,10 @@ pub enum ClipboardContentType {
 ///
 /// Variant order is part of the wire format (bincode encodes the variant
 /// index): only append new variants, never reorder or remove.
+///
+/// Byte payloads use `serde_bytes`: on the wire that's the same length +
+/// raw bytes as a plain `Vec<u8>`, but serialized in one copy rather than
+/// element by element.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FreeLifeMessage {
     /// Offer a file. `id` ties the following [`FreeLifeMessage::FileChunk`]s
@@ -42,10 +46,12 @@ pub enum FreeLifeMessage {
     FileChunk {
         id: Uuid,
         index: u64,
+        #[serde(with = "serde_bytes")]
         data: Vec<u8>,
     },
     ClipboardUpdate {
         content_type: ClipboardContentType,
+        #[serde(with = "serde_bytes")]
         payload: Vec<u8>,
     },
     NotificationEvent {
@@ -213,6 +219,20 @@ mod tests {
         };
         let overhead = chunk.encode().unwrap().len() - data.len();
         assert!(overhead < 32, "overhead was {overhead} bytes");
+    }
+
+    #[test]
+    fn chunk_data_is_length_prefixed_raw_bytes() {
+        let id = Uuid::from_bytes([9; 16]);
+        let chunk = FreeLifeMessage::FileChunk {
+            id,
+            index: 2,
+            data: vec![0xaa, 0xbb, 0xcc],
+        };
+        let mut expected = vec![1, 16];
+        expected.extend_from_slice(id.as_bytes());
+        expected.extend_from_slice(&[2, 3, 0xaa, 0xbb, 0xcc]);
+        assert_eq!(chunk.encode().unwrap(), expected);
     }
 
     #[test]

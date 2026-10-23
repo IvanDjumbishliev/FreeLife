@@ -177,6 +177,7 @@ How devices connect (details in the module docs of `packages/core/src/`):
 2. **Identity**: an Ed25519 key generated on first run and stored in the OS keychain. On Linux this needs a Secret Service provider (GNOME Keyring or KWallet). The device id is derived from the public key.
 3. **Pairing**: a commit/reveal X25519 exchange. Both screens show a 6-digit code; once the user confirms it matches, each side signs the transcript and stores the other's key in `trusted_devices.json`.
 4. **Sessions**: TLS 1.3 with each side's raw Ed25519 key pinned (RFC 7250, no certificates), carrying length-prefixed bincode `FreeLifeMessage`s. Sessions send a keep-alive ping every 30 s.
+5. **AirShare** (`packages/transfer`): a `FileTransferRequest` carrying the file's SHA-256, then 256 KB `FileChunk`s. The receiver writes chunks at their offsets (so order doesn't matter), verifies the checksum, and only then moves the file into the download folder. `freelife_transfer::node::Node` ties everything together for the apps.
 
 ### Relay server
 
@@ -202,7 +203,9 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
   libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 ```
 
-Tauri commands live in `src-tauri/src/commands.rs`; their typed TypeScript wrappers are in `src/lib/api.ts`.
+Tauri commands live in `src-tauri/src/commands.rs`; their typed TypeScript wrappers are in `src/lib/api.ts`. Events pushed to the UI (transfer progress, pairing codes) are defined in `src-tauri/src/events.rs`.
+
+To try AirShare, run the app on two machines on the same network. Click **Scan**, **Pair** a device, and confirm the 6-digit code on both. Then select the device and drop files onto the window. Received files go to `~/Downloads/FreeLife/`.
 
 ### Mobile app (Flutter)
 
@@ -213,15 +216,26 @@ flutter run                 # on a connected device or emulator
 flutter build apk           # Android APK
 ```
 
-The Android platform channel (`dev.freelife/device`) is implemented in `android/app/src/main/kotlin/dev/freelife/mobile/MainActivity.kt` and wrapped in Dart by `lib/platform/device_channel.dart`.
+You also need the Rust Android targets. The Gradle build compiles `rust/` for each ABI through cargokit (`rust_builder/`):
+
+```bash
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+```
+
+Two Android platform channels connect Dart and Kotlin:
+
+- `dev.freelife/device` (`MainActivity.kt` ↔ `lib/platform/device_channel.dart`): device info, battery, clipboard.
+- `dev.freelife/airshare` (`AirShareChannel.kt` ↔ `lib/platform/airshare_channel.dart`): "Share via FreeLife" intents, received-file notifications, storage paths, and the Wi-Fi multicast lock mDNS needs.
+
+Received files are saved to the app's own Downloads folder (`Android/data/dev.freelife.mobile/files/Download/FreeLife`). Tapping the notification opens them.
 
 **iOS:** the `ios/` host project isn't committed yet. Generate it with `flutter create --platforms=ios .` from `apps/mobile` (this leaves existing files untouched).
 
-**Rust bridge:** the app currently uses `StubCoreBridge`. To generate real bindings for `rust/src/api/`:
+**Rust bridge:** Dart talks to `rust/src/api/node.rs` through generated bindings in `lib/src/rust/` (committed). After changing the Rust API, regenerate them:
 
 ```bash
 cargo install flutter_rust_bridge_codegen --version 2.13.0
-flutter_rust_bridge_codegen generate    # writes lib/src/rust/ and rust/src/frb_generated.rs
+flutter_rust_bridge_codegen generate    # rewrites lib/src/rust/ and rust/src/frb_generated.rs
 ```
 
 The `flutter_rust_bridge` versions in `pubspec.yaml` and `rust/Cargo.toml` must match exactly.
