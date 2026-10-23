@@ -1,6 +1,6 @@
 [package]
 name = "freelife-discovery"
-description = "mDNS advertisement and discovery of FreeLife devices on the LAN."
+description = "mDNS discovery of FreeLife devices (re-exported from freelife-core)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,6 +9,3 @@ rust-version.workspace = true
 
 [dependencies]
 freelife-core.workspace = true
-mdns-sd.workspace = true
-thiserror.workspace = true
-tracing.workspace = true

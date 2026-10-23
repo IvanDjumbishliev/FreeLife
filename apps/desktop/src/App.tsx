@@ -34,8 +34,8 @@ export default function App() {
 
   async function shareClipboard(peer: Peer) {
     try {
-      await sendClipboard(peer.info.id, clipboard);
-      setStatus(`Sent clipboard to ${peer.info.name}`);
+      await sendClipboard(peer.device.id, clipboard);
+      setStatus(`Sent clipboard to ${peer.device.name}`);
     } catch (e) {
       setStatus(String(e));
     }
@@ -47,7 +47,7 @@ export default function App() {
         <h1>FreeLife</h1>
         {self && (
           <p className="muted">
-            This device: <strong>{self.name}</strong> ({self.platform}) — port {self.port}
+            This device: <strong>{self.name}</strong> ({self.os}) — key {self.fingerprint}
           </p>
         )}
       </header>
@@ -64,9 +64,9 @@ export default function App() {
         ) : (
           <ul className="peers">
             {peers.map((peer) => (
-              <li key={peer.info.id}>
+              <li key={peer.device.id}>
                 <span>
-                  {peer.info.name} <span className="muted">({peer.info.platform})</span>
+                  {peer.device.name} <span className="muted">({peer.device.os})</span>
                 </span>
                 <button onClick={() => shareClipboard(peer)} disabled={!clipboard}>
                   Send clipboard

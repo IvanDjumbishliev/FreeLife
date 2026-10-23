@@ -4,8 +4,8 @@
 
 use std::time::Duration;
 
-use freelife_core::DeviceInfo;
-use freelife_discovery::{DiscoveredDevice, Discovery};
+use freelife_core::discovery::DiscoveredDevice;
+use freelife_core::{DeviceInfo, OsType};
 use freelife_transfer::{chunk_count, OutgoingFile};
 use serde::Serialize;
 use tauri::State;
@@ -13,16 +13,37 @@ use tauri::State;
 use crate::AppState;
 
 #[derive(Serialize)]
+pub struct DeviceView {
+    id: String,
+    name: String,
+    os: OsType,
+    fingerprint: String,
+}
+
+impl From<&DeviceInfo> for DeviceView {
+    fn from(info: &DeviceInfo) -> Self {
+        Self {
+            id: info.id.to_string(),
+            name: info.name.clone(),
+            os: info.os,
+            fingerprint: info.fingerprint(),
+        }
+    }
+}
+
+#[derive(Serialize)]
 pub struct Peer {
-    info: DeviceInfo,
+    device: DeviceView,
     addresses: Vec<String>,
+    port: u16,
 }
 
 impl From<&DiscoveredDevice> for Peer {
     fn from(d: &DiscoveredDevice) -> Self {
         Self {
-            info: d.info.clone(),
+            device: DeviceView::from(&d.info),
             addresses: d.addresses.iter().map(ToString::to_string).collect(),
+            port: d.port,
         }
     }
 }
@@ -46,29 +67,32 @@ fn find_peer(state: &AppState, peer_id: &str) -> Result<DiscoveredDevice, String
 }
 
 #[tauri::command]
-pub fn get_device_info(state: State<'_, AppState>) -> DeviceInfo {
-    state.device.clone()
+pub fn get_device_info(state: State<'_, AppState>) -> DeviceView {
+    DeviceView::from(&state.device)
 }
 
-/// Browse the LAN for other FreeLife devices. Runs on a blocking thread
-/// because mDNS scanning waits for `timeout_ms`.
+/// Browse the LAN for `timeout_ms` and return every FreeLife device seen.
 #[tauri::command]
 pub async fn discover_devices(
     state: State<'_, AppState>,
     timeout_ms: Option<u64>,
 ) -> Result<Vec<Peer>, String> {
-    let local = state.device.clone();
-    let timeout = Duration::from_millis(timeout_ms.unwrap_or(2000));
+    let discovery = state
+        .discovery
+        .as_ref()
+        .ok_or("mDNS discovery is unavailable on this system")?;
+    let mut rx = discovery
+        .discover_devices()
+        .await
+        .map_err(|e| e.to_string())?;
 
-    let found = tauri::async_runtime::spawn_blocking(move || {
-        let discovery = Discovery::new(local)?;
-        let found = discovery.scan(timeout);
-        discovery.shutdown()?;
-        found
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    let mut found: Vec<DiscoveredDevice> = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms.unwrap_or(2000));
+    while let Ok(Some(device)) = tokio::time::timeout_at(deadline, rx.recv()).await {
+        found.retain(|d| d.info.id != device.info.id);
+        found.push(device);
+    }
+    // Dropping `rx` stops the browse.
 
     let peers = found.iter().map(Peer::from).collect();
     *state.peers.lock().map_err(|e| e.to_string())? = found;
@@ -83,8 +107,8 @@ pub fn send_clipboard(
     text: String,
 ) -> Result<(), String> {
     let peer = find_peer(&state, &peer_id)?;
-    let _msg = freelife_transfer::clipboard_message(text);
-    // TODO: open a connection to `peer` and write `encode_frame(&_msg)`.
+    let _msg = freelife_transfer::clipboard_text(text);
+    // TODO: pair, then `ConnectionManager::send(peer.info.id, _msg)`.
     eprintln!("[stub] would send clipboard to {}", peer.info.name);
     Ok(())
 }
@@ -105,13 +129,13 @@ pub fn send_file(
 
     let file = OutgoingFile::new(name, data);
     let chunks = chunk_count(file.size());
-    // TODO: send `file.offer()` then `file.messages()` to `peer`.
+    // TODO: send `file.request()` then `file.chunks()` via the ConnectionManager.
     eprintln!(
         "[stub] would send {} ({chunks} chunks) to {}",
-        file.name, peer.info.name
+        file.filename, peer.info.name
     );
     Ok(TransferReceipt {
-        transfer_id: file.transfer_id,
+        transfer_id: file.id.to_string(),
         chunks,
     })
 }

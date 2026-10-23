@@ -1,23 +1,28 @@
 //! File and clipboard transfer.
 //!
-//! Files are sent as a [`Message::FileOffer`] followed by fixed-size
-//! [`Message::FileChunk`]s and a [`Message::FileComplete`]. The receiver
-//! reassembles them with [`IncomingFile`] and verifies the SHA-256.
+//! A file goes out as a [`FreeLifeMessage::FileTransferRequest`] followed by
+//! fixed-size [`FreeLifeMessage::FileChunk`]s. The receiver reassembles them
+//! with [`IncomingFile`] and verifies the SHA-256 once all bytes arrive.
 //!
-//! This layer only produces and consumes [`Message`]s; the network transport
-//! lives elsewhere.
+//! This layer only produces and consumes messages; sending them is the job of
+//! [`freelife_core::ConnectionManager`].
 
-use freelife_core::Message;
+use freelife_core::{ClipboardContentType, FreeLifeMessage};
 use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 pub const CHUNK_SIZE: usize = 256 * 1024;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
+    #[error("chunk for transfer {got} does not belong to transfer {expected}")]
+    WrongTransfer { expected: Uuid, got: Uuid },
     #[error("chunk {got} arrived out of order (expected {expected})")]
     OutOfOrder { expected: u64, got: u64 },
-    #[error("received {got} bytes but the offer announced {expected}")]
-    SizeMismatch { expected: u64, got: u64 },
+    #[error("received more data than the {expected} bytes announced")]
+    TooMuchData { expected: u64 },
+    #[error("transfer incomplete: {got} of {expected} bytes")]
+    Incomplete { expected: u64, got: u64 },
     #[error("checksum mismatch")]
     ChecksumMismatch,
 }
@@ -28,31 +33,31 @@ pub fn chunk_count(size: u64) -> u64 {
     size.div_ceil(CHUNK_SIZE as u64)
 }
 
-pub fn sha256_hex(data: &[u8]) -> String {
-    Sha256::digest(data)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+pub fn sha256(data: &[u8]) -> [u8; 32] {
+    Sha256::digest(data).into()
 }
 
-pub fn clipboard_message(text: impl Into<String>) -> Message {
-    Message::ClipboardText { text: text.into() }
+pub fn clipboard_text(text: impl Into<String>) -> FreeLifeMessage {
+    FreeLifeMessage::ClipboardUpdate {
+        content_type: ClipboardContentType::Text,
+        payload: text.into().into_bytes(),
+    }
 }
 
 /// A file held in memory, ready to be sent.
 ///
 /// TODO: stream from disk instead of buffering the whole file.
 pub struct OutgoingFile {
-    pub transfer_id: String,
-    pub name: String,
+    pub id: Uuid,
+    pub filename: String,
     data: Vec<u8>,
 }
 
 impl OutgoingFile {
-    pub fn new(name: impl Into<String>, data: Vec<u8>) -> Self {
+    pub fn new(filename: impl Into<String>, data: Vec<u8>) -> Self {
         Self {
-            transfer_id: uuid::Uuid::new_v4().to_string(),
-            name: name.into(),
+            id: Uuid::new_v4(),
+            filename: filename.into(),
             data,
         }
     }
@@ -61,58 +66,65 @@ impl OutgoingFile {
         self.data.len() as u64
     }
 
-    pub fn offer(&self) -> Message {
-        Message::FileOffer {
-            transfer_id: self.transfer_id.clone(),
-            name: self.name.clone(),
+    pub fn request(&self) -> FreeLifeMessage {
+        FreeLifeMessage::FileTransferRequest {
+            id: self.id,
+            filename: self.filename.clone(),
             size: self.size(),
-            sha256: sha256_hex(&self.data),
+            checksum: sha256(&self.data),
         }
     }
 
-    /// All chunk messages followed by the completion marker.
-    pub fn messages(&self) -> impl Iterator<Item = Message> + '_ {
+    pub fn chunks(&self) -> impl Iterator<Item = FreeLifeMessage> + '_ {
         self.data
             .chunks(CHUNK_SIZE)
             .enumerate()
-            .map(|(i, chunk)| Message::FileChunk {
-                transfer_id: self.transfer_id.clone(),
+            .map(|(i, chunk)| FreeLifeMessage::FileChunk {
+                id: self.id,
                 index: i as u64,
                 data: chunk.to_vec(),
             })
-            .chain(std::iter::once(Message::FileComplete {
-                transfer_id: self.transfer_id.clone(),
-            }))
     }
 }
 
 /// Reassembles a file from in-order chunks.
 pub struct IncomingFile {
-    pub transfer_id: String,
-    pub name: String,
-    expected_size: u64,
-    expected_sha256: String,
+    pub id: Uuid,
+    pub filename: String,
+    size: u64,
+    checksum: [u8; 32],
     next_index: u64,
     buf: Vec<u8>,
 }
 
 impl IncomingFile {
-    pub fn from_offer(transfer_id: String, name: String, size: u64, sha256: String) -> Self {
+    pub fn new(id: Uuid, filename: String, size: u64, checksum: [u8; 32]) -> Self {
         Self {
-            transfer_id,
-            name,
-            expected_size: size,
-            expected_sha256: sha256,
+            id,
+            filename,
+            size,
+            checksum,
             next_index: 0,
             buf: Vec::new(),
         }
     }
 
-    pub fn push_chunk(&mut self, index: u64, data: &[u8]) -> Result<()> {
+    pub fn push_chunk(&mut self, id: Uuid, index: u64, data: &[u8]) -> Result<()> {
+        if id != self.id {
+            return Err(Error::WrongTransfer {
+                expected: self.id,
+                got: id,
+            });
+        }
         if index != self.next_index {
             return Err(Error::OutOfOrder {
                 expected: self.next_index,
                 got: index,
+            });
+        }
+        if self.buf.len() as u64 + data.len() as u64 > self.size {
+            return Err(Error::TooMuchData {
+                expected: self.size,
             });
         }
         self.buf.extend_from_slice(data);
@@ -120,23 +132,26 @@ impl IncomingFile {
         Ok(())
     }
 
+    pub fn is_complete(&self) -> bool {
+        self.buf.len() as u64 == self.size
+    }
+
     pub fn progress(&self) -> f64 {
-        if self.expected_size == 0 {
+        if self.size == 0 {
             1.0
         } else {
-            self.buf.len() as f64 / self.expected_size as f64
+            self.buf.len() as f64 / self.size as f64
         }
     }
 
     pub fn finish(self) -> Result<Vec<u8>> {
-        let got = self.buf.len() as u64;
-        if got != self.expected_size {
-            return Err(Error::SizeMismatch {
-                expected: self.expected_size,
-                got,
+        if !self.is_complete() {
+            return Err(Error::Incomplete {
+                expected: self.size,
+                got: self.buf.len() as u64,
             });
         }
-        if sha256_hex(&self.buf) != self.expected_sha256 {
+        if sha256(&self.buf) != self.checksum {
             return Err(Error::ChecksumMismatch);
         }
         Ok(self.buf)
@@ -148,19 +163,19 @@ mod tests {
     use super::*;
 
     fn receive(out: &OutgoingFile) -> Result<Vec<u8>> {
-        let Message::FileOffer {
-            transfer_id,
-            name,
+        let FreeLifeMessage::FileTransferRequest {
+            id,
+            filename,
             size,
-            sha256,
-        } = out.offer()
+            checksum,
+        } = out.request()
         else {
             unreachable!()
         };
-        let mut incoming = IncomingFile::from_offer(transfer_id, name, size, sha256);
-        for msg in out.messages() {
-            if let Message::FileChunk { index, data, .. } = msg {
-                incoming.push_chunk(index, &data)?;
+        let mut incoming = IncomingFile::new(id, filename, size, checksum);
+        for msg in out.chunks() {
+            if let FreeLifeMessage::FileChunk { id, index, data } = msg {
+                incoming.push_chunk(id, index, &data)?;
             }
         }
         incoming.finish()
@@ -178,29 +193,53 @@ mod tests {
     fn multi_chunk_round_trip() {
         let data: Vec<u8> = (0..CHUNK_SIZE * 2 + 17).map(|i| i as u8).collect();
         let out = OutgoingFile::new("blob.bin", data.clone());
-        assert_eq!(
-            out.messages().count() as u64,
-            chunk_count(data.len() as u64) + 1
-        );
+        assert_eq!(out.chunks().count() as u64, chunk_count(out.size()));
         assert_eq!(receive(&out).unwrap(), data);
     }
 
     #[test]
-    fn rejects_out_of_order_chunks() {
-        let mut f = IncomingFile::from_offer("t".into(), "f".into(), 2, sha256_hex(b"ab"));
+    fn empty_file_round_trip() {
+        assert_eq!(receive(&OutgoingFile::new("empty", vec![])).unwrap(), b"");
+    }
+
+    #[test]
+    fn rejects_out_of_order_and_foreign_chunks() {
+        let id = Uuid::new_v4();
+        let mut f = IncomingFile::new(id, "f".into(), 2, sha256(b"ab"));
         assert_eq!(
-            f.push_chunk(1, b"b"),
+            f.push_chunk(id, 1, b"b"),
             Err(Error::OutOfOrder {
                 expected: 0,
                 got: 1
             })
         );
+        assert!(matches!(
+            f.push_chunk(Uuid::new_v4(), 0, b"a"),
+            Err(Error::WrongTransfer { .. })
+        ));
     }
 
     #[test]
-    fn detects_corruption() {
-        let mut f = IncomingFile::from_offer("t".into(), "f".into(), 2, sha256_hex(b"ab"));
-        f.push_chunk(0, b"xx").unwrap();
+    fn rejects_overflow_and_corruption() {
+        let id = Uuid::new_v4();
+        let mut f = IncomingFile::new(id, "f".into(), 2, sha256(b"ab"));
+        assert_eq!(
+            f.push_chunk(id, 0, b"abc"),
+            Err(Error::TooMuchData { expected: 2 })
+        );
+        f.push_chunk(id, 0, b"xx").unwrap();
+        assert!(f.is_complete());
         assert_eq!(f.finish(), Err(Error::ChecksumMismatch));
+    }
+
+    #[test]
+    fn clipboard_text_message() {
+        assert_eq!(
+            clipboard_text("hi"),
+            FreeLifeMessage::ClipboardUpdate {
+                content_type: ClipboardContentType::Text,
+                payload: b"hi".to_vec(),
+            }
+        );
     }
 }

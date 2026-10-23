@@ -2,25 +2,20 @@
 // Keep the types here in sync with the Rust structs (serde renames to camelCase).
 import { invoke } from "@tauri-apps/api/core";
 
-export type Platform =
-  | "android"
-  | "ios"
-  | "linux"
-  | "windows"
-  | "macos"
-  | "browser"
-  | "unknown";
+export type OsType = "Android" | "Linux" | "Windows" | "MacOS";
 
 export interface DeviceInfo {
   id: string;
   name: string;
-  platform: Platform;
-  port: number;
+  os: OsType;
+  /** Short hash of the device's identity key, for users to compare. */
+  fingerprint: string;
 }
 
 export interface Peer {
-  info: DeviceInfo;
+  device: DeviceInfo;
   addresses: string[];
+  port: number;
 }
 
 export interface TransferReceipt {

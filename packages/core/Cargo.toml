@@ -1,6 +1,6 @@
 [package]
 name = "freelife-core"
-description = "Shared FreeLife wire protocol: device identity, messages and framing."
+description = "FreeLife core: device identity, mDNS discovery, pairing, wire protocol and encrypted connections."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,24 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+bincode.workspace = true
+hex.workspace = true
+mdns-sd.workspace = true
+ring.workspace = true
+rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
+tokio-rustls.workspace = true
+tracing.workspace = true
 uuid.workspace = true
+
+# OS keychains: macOS Keychain, Windows Credential Manager, Secret Service on Linux.
+# Mobile platforms will provide their own KeyStore (Android Keystore / iOS Keychain).
+[target.'cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))'.dependencies]
+keyring.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -133,8 +133,8 @@ FreeLife/
 │       ├── src/         #   React frontend
 │       └── src-tauri/   #   Rust backend + Tauri commands
 ├── packages/
-│   ├── core/            # freelife-core: device identity, protocol messages, framing
-│   ├── discovery/       # freelife-discovery: mDNS advertisement + browsing
+│   ├── core/            # freelife-core: identity, mDNS discovery, pairing, wire protocol, TLS sessions
+│   ├── discovery/       # freelife-discovery: re-exports freelife_core::discovery
 │   └── transfer/        # freelife-transfer: chunked file + clipboard transfer
 ├── relay/               # freelife-relay: optional self-hostable Axum relay
 ├── extension/           # Manifest V3 browser extension (Chrome + Firefox)
@@ -166,7 +166,17 @@ cd FreeLife
 cargo build --workspace
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
+
+# Opt-in test that uses real multicast on your network:
+cargo test -p freelife-core -- --ignored mdns
 ```
+
+How devices connect (details in the module docs of `packages/core/src/`):
+
+1. **Discovery**: each device advertises `_freelife._tcp` on port `7432` via mDNS, with its id, name, OS and Ed25519 public key in the TXT record.
+2. **Identity**: an Ed25519 key generated on first run and stored in the OS keychain. On Linux this needs a Secret Service provider (GNOME Keyring or KWallet). The device id is derived from the public key.
+3. **Pairing**: a commit/reveal X25519 exchange. Both screens show a 6-digit code; once the user confirms it matches, each side signs the transcript and stores the other's key in `trusted_devices.json`.
+4. **Sessions**: TLS 1.3 with each side's raw Ed25519 key pinned (RFC 7250, no certificates), carrying length-prefixed bincode `FreeLifeMessage`s. Sessions send a keep-alive ping every 30 s.
 
 ### Relay server
 
@@ -248,7 +258,7 @@ Whether you're a Rust developer, mobile engineer, designer, tester, technical wr
 
 ### Protocol changes
 
-`packages/core` defines the wire protocol shared by every client. Any breaking change to `Message` or framing must bump `PROTOCOL_VERSION` and be called out in the PR description.
+`packages/core` defines the wire protocol shared by every client. Any breaking change to `FreeLifeMessage`, the pairing messages, or framing must bump `PROTOCOL_VERSION` and be called out in the PR description. New `FreeLifeMessage` variants go at the end: bincode encodes the variant index, so reordering breaks older peers.
 
 ## 📄 License
 

@@ -1,19 +1,34 @@
-//! FreeLife shared protocol.
+//! FreeLife core protocol.
 //!
-//! Every FreeLife client (desktop, mobile, relay) speaks the same protocol:
-//! JSON-encoded [`Message`]s, each prefixed on the wire by a big-endian `u32`
-//! length (see [`encode_frame`] / [`decode_frame`]).
+//! - [`discovery`]: advertise and find devices on the LAN via mDNS.
+//! - [`identity`]: the per-device Ed25519 identity key, kept in the OS keychain.
+//! - [`pairing`]: PIN-confirmed handshake that establishes mutual trust.
+//! - [`trust`]: the `trusted_devices.json` store of paired devices.
+//! - [`protocol`]: [`FreeLifeMessage`] and length-prefixed bincode framing.
+//! - [`tls`]: TLS 1.3 configs authenticated by pinned identity keys.
+//! - [`connection`]: [`ConnectionManager`], which keeps encrypted sessions
+//!   to paired devices alive and routes messages.
 
+pub mod connection;
 mod device;
+pub mod discovery;
 mod error;
-mod message;
+pub mod identity;
+pub mod pairing;
+pub mod protocol;
+pub mod tls;
+pub mod trust;
 
-pub use device::{DeviceId, DeviceInfo, Platform};
-pub use error::{Error, Result};
-pub use message::{decode_frame, encode_frame, Message, MAX_FRAME_LEN};
+pub use connection::{ConnectionConfig, ConnectionManager};
+pub use device::{DeviceId, DeviceInfo, OsType, PUBLIC_KEY_LEN};
+pub use error::{Error, PairingError, Result};
+pub use identity::Identity;
+pub use protocol::{ClipboardContentType, FreeLifeMessage};
+pub use trust::TrustStore;
 
-/// Protocol version advertised in [`Message::Hello`]. Bump on breaking changes.
+/// Protocol version, checked during pairing and advertised via TLS ALPN.
+/// Bump on breaking wire changes.
 pub const PROTOCOL_VERSION: u16 = 1;
 
-/// Default TCP port FreeLife devices listen on for peer connections.
-pub const DEFAULT_PORT: u16 = 47_820;
+/// TCP port FreeLife devices listen on, for both pairing and sessions.
+pub const DEFAULT_PORT: u16 = 7432;
