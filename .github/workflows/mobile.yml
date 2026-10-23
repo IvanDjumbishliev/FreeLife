@@ -40,7 +40,8 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/mobile/rust -> ../build/build_tool
+          # cargokit puts its cargo target dir under the Flutter build dir.
+          workspaces: apps/mobile/rust -> ../build/rust_lib_freelife/build
 
       - name: Install dependencies
         run: flutter pub get
