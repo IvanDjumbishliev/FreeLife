@@ -1,0 +1,4 @@
+# Config for `flutter_rust_bridge_codegen generate` (run from apps/mobile).
+rust_input: crate::api
+rust_root: rust/
+dart_output: lib/src/rust

@@ -1,0 +1,14 @@
+[package]
+name = "freelife-transfer"
+description = "Chunked file and clipboard transfer engine for FreeLife."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+freelife-core.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid.workspace = true

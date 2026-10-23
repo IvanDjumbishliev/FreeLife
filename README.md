@@ -120,50 +120,108 @@ FreeLife is designed with the following principles:
 
 Security is an ongoing process. End-to-end encryption, key management, relay behavior, and individual platform integrations must be verified against the actual implementation before being considered production-ready.
 
+## 🗂️ Repository Structure
+
+```
+FreeLife/
+├── apps/
+│   ├── mobile/          # Flutter app (Android + iOS)
+│   │   ├── android/     #   Android host project + platform channel (MainActivity.kt)
+│   │   ├── lib/         #   Dart UI, platform channel + Rust bridge wrappers
+│   │   └── rust/        #   Rust crate exposed to Dart via flutter_rust_bridge
+│   └── desktop/         # Tauri 2 + React (Vite) app (Windows, Linux, macOS)
+│       ├── src/         #   React frontend
+│       └── src-tauri/   #   Rust backend + Tauri commands
+├── packages/
+│   ├── core/            # freelife-core: device identity, protocol messages, framing
+│   ├── discovery/       # freelife-discovery: mDNS advertisement + browsing
+│   └── transfer/        # freelife-transfer: chunked file + clipboard transfer
+├── relay/               # freelife-relay: optional self-hostable Axum relay
+├── extension/           # Manifest V3 browser extension (Chrome + Firefox)
+├── .github/workflows/   # CI: Rust tests, Android APK, Tauri Windows/Linux builds
+└── Cargo.toml           # Cargo workspace (packages/* + relay)
+```
+
+The root Cargo workspace contains the shared crates and the relay. The two app crates (`apps/desktop/src-tauri`, `apps/mobile/rust`) are built separately because they need platform toolchains, but they depend on the shared crates by path.
+
 ## 🧑‍💻 Getting Started
 
 ### Prerequisites
 
-Development requirements depend on the component you're working on. The intended toolchain includes:
-
-- Rust and Cargo
-- Node.js and pnpm
-- Flutter and the Dart SDK
-- Tauri prerequisites for your operating system
-
-### Clone the repository
+| Working on | You need |
+|---|---|
+| Rust crates / relay | [Rust](https://rustup.rs) (stable) |
+| Desktop app | Rust, Node.js 20+, [pnpm](https://pnpm.io), and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS |
+| Mobile app | [Flutter](https://docs.flutter.dev/get-started/install) (stable), Android SDK, JDK 17 |
+| Browser extension | Chrome/Chromium or Firefox 142+ |
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/FreeLife.git
+git clone https://github.com/IvanDjumbishliev/FreeLife.git
 cd FreeLife
 ```
 
-### Build the Rust core
+### Rust core, discovery & transfer
 
 ```bash
-cd core
-cargo build
+cargo build --workspace
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-### Run the desktop application
-
-From the desktop application's directory:
+### Relay server
 
 ```bash
+cargo run -p freelife-relay
+# Listens on 0.0.0.0:8787 by default; override with FREELIFE_RELAY_ADDR.
+curl localhost:8787/health
+```
+
+### Desktop app (Tauri + React)
+
+```bash
+cd apps/desktop
 pnpm install
-pnpm tauri dev
+pnpm tauri dev      # run with hot reload
+pnpm tauri build    # produce installers in src-tauri/target/release/bundle/
 ```
 
-### Run the mobile application
-
-From the Flutter application's directory:
+On Debian/Ubuntu, install the webview dependencies first:
 
 ```bash
-flutter pub get
-flutter run
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
+  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 ```
 
-Adjust directory names and commands to match the current repository structure. Consult the project documentation for component-specific setup, pairing, and troubleshooting instructions.
+Tauri commands live in `src-tauri/src/commands.rs`; their typed TypeScript wrappers are in `src/lib/api.ts`.
+
+### Mobile app (Flutter)
+
+```bash
+cd apps/mobile
+flutter pub get
+flutter run                 # on a connected device or emulator
+flutter build apk           # Android APK
+```
+
+The Android platform channel (`dev.freelife/device`) is implemented in `android/app/src/main/kotlin/dev/freelife/mobile/MainActivity.kt` and wrapped in Dart by `lib/platform/device_channel.dart`.
+
+**iOS:** the `ios/` host project isn't committed yet. Generate it with `flutter create --platforms=ios .` from `apps/mobile` (this leaves existing files untouched).
+
+**Rust bridge:** the app currently uses `StubCoreBridge`. To generate real bindings for `rust/src/api/`:
+
+```bash
+cargo install flutter_rust_bridge_codegen --version 2.13.0
+flutter_rust_bridge_codegen generate    # writes lib/src/rust/ and rust/src/frb_generated.rs
+```
+
+The `flutter_rust_bridge` versions in `pubspec.yaml` and `rust/Cargo.toml` must match exactly.
+
+### Browser extension
+
+- **Chrome:** open `chrome://extensions`, enable *Developer mode*, click *Load unpacked*, and select `extension/`.
+- **Firefox:** open `about:debugging#/runtime/this-firefox`, click *Load Temporary Add-on*, and select `extension/manifest.json`.
+
+Lint with `npx web-ext lint --source-dir extension`.
 
 ## 🤝 Contributing
 
@@ -177,7 +235,20 @@ Whether you're a Rust developer, mobile engineer, designer, tester, technical wr
 - 📖 **Improve documentation:** Make installation guides, explanations, and translations clearer.
 - 🧪 **Test compatibility:** Help identify which device combinations and features work reliably.
 
-For contribution guidelines, development setup, and community standards, see the repository's documentation.
+### Workflow
+
+1. Fork the repository and create a branch from `main` (`feat/clipboard-images`, `fix/discovery-timeout`, …).
+2. Keep pull requests focused. Open an issue first for large changes or protocol changes.
+3. Make sure the checks for the parts you touched pass locally:
+   - Rust: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`
+   - Desktop: `pnpm build` in `apps/desktop`
+   - Mobile: `flutter analyze` and `flutter test` in `apps/mobile`
+4. Write clear commit messages in the imperative mood ("Add mDNS timeout option").
+5. Open a pull request describing what changed and why. CI must be green before merge.
+
+### Protocol changes
+
+`packages/core` defines the wire protocol shared by every client. Any breaking change to `Message` or framing must bump `PROTOCOL_VERSION` and be called out in the PR description.
 
 ## 📄 License
 

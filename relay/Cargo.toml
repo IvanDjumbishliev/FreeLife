@@ -1,0 +1,22 @@
+[package]
+name = "freelife-relay"
+description = "Optional self-hostable relay for FreeLife peers that can't reach each other directly."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+freelife-core.workspace = true
+axum.workspace = true
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+http-body-util.workspace = true
+serde_json.workspace = true
+tower = { workspace = true, features = ["util"] }

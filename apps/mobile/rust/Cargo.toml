@@ -1,0 +1,20 @@
+[package]
+name = "freelife_mobile"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+# Built separately from the root workspace (see the `exclude` list there).
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+# Must match the `flutter_rust_bridge` version in ../pubspec.yaml exactly.
+flutter_rust_bridge = "=2.13.0"
+freelife-core = { path = "../../../packages/core" }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
