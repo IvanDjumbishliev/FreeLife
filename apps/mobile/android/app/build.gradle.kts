@@ -50,5 +50,6 @@ flutter {
 
 dependencies {
     // FileProvider, NotificationCompat and IntentCompat for AirShare.
-    implementation("androidx.core:core-ktx:1.19.1")
+    // 1.19+ needs compileSdk 37; Flutter currently compiles against 36.
+    implementation("androidx.core:core-ktx:1.18.0")
 }
