@@ -10,6 +10,7 @@ use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::Duration;
 
 use anyhow::{anyhow, Context};
+use freelife_clipboard::ClipboardSync;
 use freelife_core::identity::FileKeyStore;
 use freelife_core::prompts::PromptEvent;
 use freelife_core::{DeviceId, DeviceInfo, OsType};
@@ -19,7 +20,7 @@ use tokio::sync::broadcast::error::RecvError;
 
 use crate::frb_generated::StreamSink;
 
-static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+pub(crate) static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .thread_name("freelife")
@@ -29,14 +30,15 @@ static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
 });
 
 static NODE: OnceLock<Arc<Node>> = OnceLock::new();
+pub(crate) static CLIPBOARD: OnceLock<Arc<ClipboardSync>> = OnceLock::new();
 
-fn node() -> anyhow::Result<&'static Arc<Node>> {
+pub(crate) fn node() -> anyhow::Result<&'static Arc<Node>> {
     NODE.get()
         .ok_or_else(|| anyhow!("FreeLife has not been started"))
 }
 
 /// Run `fut` on our runtime and wait for it from whatever executor called us.
-async fn on_runtime<F>(fut: F) -> F::Output
+pub(crate) async fn on_runtime<F>(fut: F) -> F::Output
 where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
@@ -215,7 +217,14 @@ pub async fn start_node(
         let os = OsType::current().unwrap_or(OsType::Android);
         let mut config = NodeConfig::new(device_name, os, key_store, data_dir);
         config.receiver.download_dir = PathBuf::from(download_dir);
+        let settings_dir = config.data_dir.clone();
         let node = Node::start(config).await.context("starting FreeLife")?;
+        let clipboard = ClipboardSync::new(
+            node.clone(),
+            Some(settings_dir.join(freelife_clipboard::SETTINGS_FILE)),
+        )
+        .await;
+        let _ = CLIPBOARD.set(clipboard);
         let node = NODE.get_or_init(|| node);
         Ok(DeviceSummary::from(node.device()))
     })

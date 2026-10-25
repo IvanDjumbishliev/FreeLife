@@ -21,8 +21,10 @@ const LEN_PREFIX: usize = 4;
 pub enum ClipboardContentType {
     /// UTF-8 text.
     Text,
-    /// Encoded image (PNG).
+    /// PNG image, as raw bytes (the protocol is binary, so no base64).
     Image,
+    /// A single UTF-8 URL. Appended last: variant order is wire format.
+    Url,
 }
 
 /// Messages exchanged between paired devices.
@@ -233,6 +235,21 @@ mod tests {
         expected.extend_from_slice(id.as_bytes());
         expected.extend_from_slice(&[2, 3, 0xaa, 0xbb, 0xcc]);
         assert_eq!(chunk.encode().unwrap(), expected);
+    }
+
+    #[test]
+    fn clipboard_type_tags_are_stable() {
+        let tag = |t| {
+            FreeLifeMessage::ClipboardUpdate {
+                content_type: t,
+                payload: vec![],
+            }
+            .encode()
+            .unwrap()[1]
+        };
+        assert_eq!(tag(ClipboardContentType::Text), 0);
+        assert_eq!(tag(ClipboardContentType::Image), 1);
+        assert_eq!(tag(ClipboardContentType::Url), 2);
     }
 
     #[test]

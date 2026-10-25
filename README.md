@@ -177,7 +177,8 @@ How devices connect (details in the module docs of `packages/core/src/`):
 2. **Identity**: an Ed25519 key generated on first run and stored in the OS keychain. On Linux this needs a Secret Service provider (GNOME Keyring or KWallet). The device id is derived from the public key.
 3. **Pairing**: a commit/reveal X25519 exchange. Both screens show a 6-digit code; once the user confirms it matches, each side signs the transcript and stores the other's key in `trusted_devices.json`.
 4. **Sessions**: TLS 1.3 with each side's raw Ed25519 key pinned (RFC 7250, no certificates), carrying length-prefixed bincode `FreeLifeMessage`s. Sessions send a keep-alive ping every 30 s.
-5. **AirShare** (`packages/transfer`): a `FileTransferRequest` carrying the file's SHA-256, then 256 KB `FileChunk`s. The receiver writes chunks at their offsets (so order doesn't matter), verifies the checksum, and only then moves the file into the download folder. `freelife_transfer::node::Node` ties everything together for the apps.
+5. **Universal Clipboard** (`packages/clipboard`): a copy on one device is sent to paired devices within milliseconds. Text, URLs and images are supported. Content is never logged, only short hashes. Copies that look like passwords, private keys or API tokens are not sent, and neither are copies that password managers mark as sensitive. A copy that a device has just sent is not sent back.
+6. **AirShare** (`packages/transfer`): a `FileTransferRequest` carrying the file's SHA-256, then 256 KB `FileChunk`s. The receiver writes chunks at their offsets (so order doesn't matter), verifies the checksum, and only then moves the file into the download folder. `freelife_transfer::node::Node` ties everything together for the apps.
 
 ### Relay server
 
@@ -205,6 +206,8 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
 
 Tauri commands live in `src-tauri/src/commands.rs`; their typed TypeScript wrappers are in `src/lib/api.ts`. Events pushed to the UI (transfer progress, pairing codes) are defined in `src-tauri/src/events.rs`.
 
+**Clipboard sync** starts with the app and can be turned off in Settings. On Windows it works as you copy. On Linux it needs a Wayland compositor that allows clipboard access, or X11. The macOS backend is written but hasn't been built or run yet. Timing: a copy reaches a paired device in about 50 ms on a LAN (the poll interval plus under 1 ms of network time). On Android it works while the app is on screen. In the background, tap **Sync clipboard** in the FreeLife notification (see the Android notes below).
+
 To try AirShare, run the app on two machines on the same network. Click **Scan**, **Pair** a device, and confirm the 6-digit code on both. Then select the device and drop files onto the window. Received files go to `~/Downloads/FreeLife/`.
 
 ### Mobile app (Flutter)
@@ -222,9 +225,16 @@ You also need the Rust Android targets. The Gradle build compiles `rust/` for ea
 rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 ```
 
-Two Android platform channels connect Dart and Kotlin:
+Android clipboard sync has limits set by Android itself:
+
+- **Android 10+** only lets an app read or write the clipboard while it has focus. FreeLife keeps a foreground service running with a "Sync clipboard" notification. Tapping it reads the current copy through a transparent activity. Received content that Android refuses to store from the background is queued behind a "Tap to copy" notification.
+- **Android 13+** shows a "Copied" message whenever FreeLife writes to the clipboard. Android draws this message, and apps cannot turn it off.
+- Copies marked sensitive (`EXTRA_IS_SENSITIVE`, Android 13+) are never synced.
+
+Three Android platform channels connect Dart and Kotlin:
 
 - `dev.freelife/device` (`MainActivity.kt` ↔ `lib/platform/device_channel.dart`): device info, battery, clipboard.
+- `dev.freelife/clipboard` (`ClipboardChannel.kt`, `ClipboardSyncService.kt`, `ClipboardActivity.kt` ↔ `lib/platform/clipboard_channel.dart`): clipboard reads and writes, the sync service, and the notification fallback.
 - `dev.freelife/airshare` (`AirShareChannel.kt` ↔ `lib/platform/airshare_channel.dart`): "Share via FreeLife" intents, received-file notifications, storage paths, and the Wi-Fi multicast lock mDNS needs.
 
 Received files are saved to the app's own Downloads folder (`Android/data/dev.freelife.mobile/files/Download/FreeLife`). Tapping the notification opens them.

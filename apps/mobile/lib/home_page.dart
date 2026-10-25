@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'backend.dart';
+import 'clipboard_sync.dart';
 import 'platform/airshare_channel.dart';
 import 'platform/device_channel.dart';
 import 'util/format.dart';
@@ -17,11 +18,13 @@ class HomePage extends StatefulWidget {
     required this.backend,
     required this.device,
     required this.airshare,
+    required this.clipboard,
   });
 
   final FreeLifeBackend backend;
   final DeviceChannel device;
   final AirShareChannel airshare;
+  final ClipboardSyncController clipboard;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -36,6 +39,7 @@ class _HomePageState extends State<HomePage> {
   List<NearbyDevice> _nearby = const [];
   bool _scanning = false;
   String? _pairingWith;
+  bool _clipboardOn = false;
 
   /// Pairing codes waiting for an answer; the first one is on screen.
   final _prompts = <PairingUpdate>[];
@@ -79,6 +83,11 @@ class _HomePageState extends State<HomePage> {
     } on Object catch (e) {
       if (mounted) setState(() => _startError = '$e');
       return;
+    }
+
+    await widget.clipboard.start();
+    if (mounted) {
+      setState(() => _clipboardOn = widget.clipboard.engine.enabled);
     }
 
     _subscriptions
@@ -285,6 +294,26 @@ class _HomePageState extends State<HomePage> {
                     itemBuilder: (_) => const [
                       PopupMenuItem(value: 'unpair', child: Text('Unpair')),
                     ],
+                  ),
+                ),
+              const _Header('Clipboard'),
+              SwitchListTile(
+                title: const Text('Clipboard sync'),
+                subtitle: Text(_clipboardOn ? 'On' : 'Off'),
+                value: _clipboardOn,
+                onChanged: self == null
+                    ? null
+                    : (on) async {
+                        setState(() => _clipboardOn = on);
+                        await widget.clipboard.setEnabled(on);
+                      },
+              ),
+              for (final note in clipboardLimitations)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
+                  child: Text(
+                    note,
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
               const _Header('Transfers'),

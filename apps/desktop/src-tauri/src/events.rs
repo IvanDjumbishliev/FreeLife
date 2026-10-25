@@ -1,10 +1,10 @@
-//! Push node activity to the frontend as Tauri events, and raise native
-//! notifications for received files.
+//! Push node and clipboard activity to the frontend as Tauri events, and
+//! raise native notifications for received files.
 
 use std::sync::Arc;
 
+use freelife_clipboard::{ClipboardEvent, ClipboardSync};
 use freelife_core::prompts::PromptEvent;
-use freelife_core::{ClipboardContentType, FreeLifeMessage};
 use freelife_transfer::node::Node;
 use freelife_transfer::{Direction, TransferEvent};
 use serde::Serialize;
@@ -17,7 +17,7 @@ use crate::commands::DeviceView;
 pub const TRANSFER_EVENT: &str = "transfer-event";
 pub const PAIRING_PROMPT: &str = "pairing-prompt";
 pub const PAIRING_DISMISS: &str = "pairing-dismiss";
-pub const CLIPBOARD_RECEIVED: &str = "clipboard-received";
+pub const CLIPBOARD_EVENT: &str = "clipboard-event";
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,14 +33,7 @@ struct DismissView {
     request_id: u64,
 }
 
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ClipboardView {
-    from: String,
-    text: String,
-}
-
-pub fn forward(app: AppHandle, node: Arc<Node>) {
+pub fn forward(app: AppHandle, node: Arc<Node>, clipboard: Arc<ClipboardSync>) {
     let mut transfers = node.subscribe_transfers();
     let (a, n) = (app.clone(), node.clone());
     tauri::async_runtime::spawn(async move {
@@ -78,25 +71,27 @@ pub fn forward(app: AppHandle, node: Arc<Node>) {
         }
     });
 
-    if let Some(mut other) = node.take_other_messages() {
-        tauri::async_runtime::spawn(async move {
-            while let Some((from, msg)) = other.recv().await {
-                match msg {
-                    FreeLifeMessage::ClipboardUpdate {
-                        content_type: ClipboardContentType::Text,
-                        payload,
-                    } => {
-                        let view = ClipboardView {
-                            from: from.to_string(),
-                            text: String::from_utf8_lossy(&payload).into_owned(),
-                        };
-                        let _ = app.emit(CLIPBOARD_RECEIVED, view);
+    let mut clips = clipboard.subscribe();
+    let a = app;
+    tauri::async_runtime::spawn(async move {
+        loop {
+            match clips.recv().await {
+                Ok(event) => {
+                    // The frontend only needs the summary, never the content.
+                    let _ = a.emit(CLIPBOARD_EVENT, &event);
+                    if let ClipboardEvent::Skipped { kind, reason, .. } = &event {
+                        tracing::info!(
+                            ?kind,
+                            reason = reason.describe(),
+                            "clipboard content kept local"
+                        );
                     }
-                    other => tracing::debug!(%from, ?other, "unhandled message"),
                 }
+                Err(RecvError::Lagged(_)) => continue,
+                Err(RecvError::Closed) => break,
             }
-        });
-    }
+        }
+    });
 }
 
 fn notify_if_received(app: &AppHandle, node: &Node, event: &TransferEvent) {

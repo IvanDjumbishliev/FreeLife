@@ -21,6 +21,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 freelife-core = { path = "../../../packages/core" }
 freelife-transfer = { path = "../../../packages/transfer" }
+freelife-clipboard = { path = "../../../packages/clipboard" }
 tauri = { version = "2", features = [] }
 tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }

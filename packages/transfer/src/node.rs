@@ -75,7 +75,7 @@ pub struct Node {
     events: broadcast::Sender<TransferEvent>,
     /// Last known addresses of devices, from discovery or pairing.
     addresses: Mutex<HashMap<DeviceId, Vec<SocketAddr>>>,
-    other_messages: Mutex<Option<mpsc::Receiver<(DeviceId, FreeLifeMessage)>>>,
+    messages: broadcast::Sender<(DeviceId, FreeLifeMessage)>,
 }
 
 impl Node {
@@ -100,7 +100,8 @@ impl Node {
         };
 
         let events = broadcast::channel(512).0;
-        let other_messages = spawn_receiver(incoming, config.receiver, events.clone());
+        let messages = broadcast::channel(64).0;
+        spawn_receiver(incoming, config.receiver, events.clone(), messages.clone());
 
         Ok(Arc::new(Self {
             device,
@@ -110,7 +111,7 @@ impl Node {
             prompts,
             events,
             addresses: Mutex::new(HashMap::new()),
-            other_messages: Mutex::new(Some(other_messages)),
+            messages,
         }))
     }
 
@@ -146,10 +147,11 @@ impl Node {
         self.prompts.respond(request_id, accept)
     }
 
-    /// Non-transfer messages (clipboard, notifications, handoff URLs).
-    /// Available once; later calls return `None`.
-    pub fn take_other_messages(&self) -> Option<mpsc::Receiver<(DeviceId, FreeLifeMessage)>> {
-        self.other_messages.lock().expect("lock poisoned").take()
+    /// Non-transfer messages (clipboard, notifications, handoff URLs) from
+    /// paired devices. Each feature subscribes for the messages it handles.
+    /// Messages arriving with no subscriber are dropped.
+    pub fn subscribe_messages(&self) -> broadcast::Receiver<(DeviceId, FreeLifeMessage)> {
+        self.messages.subscribe()
     }
 
     pub fn paired_devices(&self) -> Vec<TrustedDevice> {
@@ -251,6 +253,52 @@ impl Node {
             return self.current_connection(device_id);
         }
         Err(TransferError::Unreachable(device_id))
+    }
+
+    /// Send `message` to each of `devices` in parallel, connecting first where
+    /// needed. A device that can't be reached within `timeout` is skipped.
+    /// Returns how many devices the message was handed to.
+    pub async fn send_to_many(
+        self: &Arc<Self>,
+        devices: impl IntoIterator<Item = DeviceId>,
+        message: FreeLifeMessage,
+        timeout: Duration,
+    ) -> usize {
+        let mut tasks = tokio::task::JoinSet::new();
+        for device in devices {
+            let (node, message) = (self.clone(), message.clone());
+            tasks.spawn(async move {
+                let send = async {
+                    node.connection_to(device).await?.send(message).await?;
+                    Ok::<_, TransferError>(())
+                };
+                match tokio::time::timeout(timeout, send).await {
+                    Ok(Ok(())) => true,
+                    Ok(Err(e)) => {
+                        tracing::debug!(%device, error = %e, "send failed");
+                        false
+                    }
+                    Err(_) => {
+                        tracing::debug!(%device, "send timed out");
+                        false
+                    }
+                }
+            });
+        }
+        tasks.join_all().await.into_iter().filter(|ok| *ok).count()
+    }
+
+    /// Connect to every paired device in the background, so the first
+    /// message to each doesn't pay for discovery and the TLS handshake.
+    pub fn warm_up(self: &Arc<Self>) {
+        for device in self.paired_devices() {
+            let node = self.clone();
+            tokio::spawn(async move {
+                if let Err(e) = node.connection_to(device.id).await {
+                    tracing::debug!(device = %device.id, error = %e, "warm-up connect failed");
+                }
+            });
+        }
     }
 
     /// Send a file to a paired device, reporting progress on
@@ -377,8 +425,13 @@ fn spawn_receiver(
     incoming: Incoming,
     config: ReceiverConfig,
     events: broadcast::Sender<TransferEvent>,
-) -> mpsc::Receiver<(DeviceId, FreeLifeMessage)> {
-    let (other_tx, other_rx) = mpsc::channel(64);
+    messages: broadcast::Sender<(DeviceId, FreeLifeMessage)>,
+) {
+    let (other_tx, mut other_rx) = mpsc::channel(64);
     tokio::spawn(FileReceiver::new(config, events).run(incoming, other_tx));
-    other_rx
+    tokio::spawn(async move {
+        while let Some(msg) = other_rx.recv().await {
+            let _ = messages.send(msg);
+        }
+    });
 }

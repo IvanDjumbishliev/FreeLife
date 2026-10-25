@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   discoverDevices,
+  getClipboardSettings,
   getDeviceInfo,
   listPairedDevices,
-  onClipboardReceived,
+  onClipboardEvent,
   onPairingDismiss,
   onPairingPrompt,
   onTransferEvent,
   pairDevice,
   respondPairing,
-  sendClipboard,
   sendFile,
+  setClipboardSettings,
   unpairDevice,
+  type ClipboardSettings,
   type DeviceInfo,
   type NearbyDevice,
   type PairedDevice,
@@ -24,6 +26,8 @@ import { DropZone } from "./components/DropZone";
 import { PairingDialog } from "./components/PairingDialog";
 import { Toasts, useToasts } from "./components/Toasts";
 import { Transfers, type TransferView } from "./components/Transfers";
+import { ClipboardSettingsPanel } from "./components/ClipboardSettings";
+import { ClipboardToast } from "./components/ClipboardToast";
 
 export default function App() {
   const [self, setSelf] = useState<DeviceInfo | null>(null);
@@ -34,7 +38,8 @@ export default function App() {
   const [pairing, setPairing] = useState<string | null>(null);
   const [prompts, setPrompts] = useState<PairingPrompt[]>([]);
   const [transfers, setTransfers] = useState<TransferView[]>([]);
-  const [clipboard, setClipboard] = useState("");
+  const [clipboardSettings, setClipboardSettingsState] = useState<ClipboardSettings | null>(null);
+  const [clipboardNotice, setClipboardNotice] = useState<string | null>(null);
   const toasts = useToasts();
   const { push } = toasts;
 
@@ -57,6 +62,7 @@ export default function App() {
 
   useEffect(() => {
     getDeviceInfo().then(setSelf).catch((e) => push(String(e), "error"));
+    getClipboardSettings().then(setClipboardSettingsState).catch((e) => push(String(e), "error"));
     refreshPaired();
     // Connection state changes aren't evented yet, so poll gently.
     const timer = setInterval(refreshPaired, 5000);
@@ -86,9 +92,14 @@ export default function App() {
     }),
   );
   useTauriEvent(() =>
-    onClipboardReceived((c) => {
-      setClipboard(c.text);
-      push(`Clipboard received from ${nameOf(c.from)}`, "info");
+    onClipboardEvent((e) => {
+      if (e.type === "received") {
+        setClipboardNotice(`Clipboard synced from ${e.deviceName}`);
+      } else if (e.type === "skipped") {
+        push(`Clipboard not synced: ${e.reason}`, "info");
+      } else if (e.type === "settingsChanged") {
+        setClipboardSettingsState(e.settings);
+      }
     }),
   );
 
@@ -145,11 +156,10 @@ export default function App() {
     await respondPairing(prompt.requestId, accept);
   }
 
-  async function shareClipboard() {
-    if (!selected) return;
+  async function changeClipboardSettings(next: ClipboardSettings) {
+    setClipboardSettingsState(next);
     try {
-      await sendClipboard(selected, clipboard);
-      push(`Clipboard sent to ${selectedDevice?.name}`, "success");
+      await setClipboardSettings(next);
     } catch (e) {
       push(String(e), "error");
     }
@@ -230,21 +240,24 @@ export default function App() {
 
       <section>
         <h2>Clipboard</h2>
-        <textarea
-          value={clipboard}
-          onChange={(e) => setClipboard(e.target.value)}
-          placeholder="Text to send to the selected device…"
-          rows={3}
-        />
-        <button onClick={shareClipboard} disabled={!selected || !clipboard}>
-          Send clipboard
-        </button>
+        {clipboardSettings && (
+          <ClipboardSettingsPanel
+            settings={clipboardSettings}
+            paired={paired}
+            onChange={changeClipboardSettings}
+          />
+        )}
+        <p className="muted small">
+          Windows and macOS sync as you copy. Linux desktops with Wayland
+          sync when the compositor allows clipboard access.
+        </p>
       </section>
 
       {prompts[0] && (
         <PairingDialog prompt={prompts[0]} onAnswer={(accept) => answerPrompt(prompts[0], accept)} />
       )}
       <Toasts {...toasts} />
+      <ClipboardToast message={clipboardNotice} onDone={() => setClipboardNotice(null)} />
     </main>
   );
 }

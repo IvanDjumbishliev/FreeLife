@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
     <!-- "File received" notifications (runtime permission on Android 13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Clipboard sync keeps running in the background as a foreground service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
     <application
         android:label="FreeLife"
         android:name="${applicationName}"
@@ -43,6 +46,17 @@
                 <data android:mimeType="*/*"/>
             </intent-filter>
         </activity>
+        <service
+            android:name=".ClipboardSyncService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+        <!-- No UI: reads or writes the clipboard while focused (see ClipboardActivity). -->
+        <activity
+            android:name=".ClipboardActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <!-- Lets "Tap to open" hand received files to other apps. -->
         <provider
             android:name="androidx.core.content.FileProvider"

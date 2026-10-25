@@ -517,16 +517,43 @@ async fn non_transfer_messages_reach_the_app() {
         .pair_at(([127, 0, 0, 1], b.node.port()).into())
         .await
         .unwrap();
-    let mut other = b.node.take_other_messages().unwrap();
-    assert!(b.node.take_other_messages().is_none());
+    // Every subscriber sees every message.
+    let mut first = b.node.subscribe_messages();
+    let mut second = b.node.subscribe_messages();
 
-    let conn = a.node.connection_to(peer.id).await.unwrap();
     let msg = freelife_transfer::clipboard_text("hello from a");
-    conn.send(msg.clone()).await.unwrap();
-    let (from, got) = tokio::time::timeout(Duration::from_secs(5), other.recv())
+    let delivered = a
+        .node
+        .send_to_many([peer.id], msg.clone(), Duration::from_secs(5))
+        .await;
+    assert_eq!(delivered, 1);
+    for rx in [&mut first, &mut second] {
+        let (from, got) = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(from, a.node.device().id);
+        assert_eq!(got, msg);
+    }
+}
+
+#[tokio::test]
+async fn send_to_many_skips_unreachable_devices() {
+    let a = start_node("a").await;
+    let b = start_node("b").await;
+    let peer = a
+        .node
+        .pair_at(([127, 0, 0, 1], b.node.port()).into())
         .await
-        .unwrap()
         .unwrap();
-    assert_eq!(from, a.node.device().id);
-    assert_eq!(got, msg);
+    let mut rx = b.node.subscribe_messages();
+    let stranger = device_id(); // not paired: fails fast
+
+    let msg = freelife_transfer::clipboard_text("x");
+    let delivered = a
+        .node
+        .send_to_many([peer.id, stranger], msg, Duration::from_secs(5))
+        .await;
+    assert_eq!(delivered, 1);
+    assert!(rx.recv().await.is_ok());
 }

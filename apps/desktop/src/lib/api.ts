@@ -63,10 +63,28 @@ export interface PairingPrompt {
   code: string;
 }
 
-export interface ClipboardReceived {
-  from: string;
-  text: string;
+export interface ClipboardSettings {
+  enabled: boolean;
+  trustedOnly: boolean;
+  trustedDevices: string[];
+  blockSecrets: boolean;
+  syncImages: boolean;
 }
+
+export type ContentKind = "text" | "url" | "image";
+
+/** Summaries only: clipboard content itself never reaches the UI. */
+export type ClipboardEvent =
+  | { type: "sent"; hash: string; kind: ContentKind; devices: number }
+  | {
+      type: "received";
+      from: string;
+      deviceName: string;
+      kind: ContentKind;
+      hash: string;
+    }
+  | { type: "skipped"; hash: string; kind: ContentKind; reason: string }
+  | { type: "settingsChanged"; settings: ClipboardSettings };
 
 export const getDeviceInfo = () => invoke<DeviceInfo>("get_device_info");
 
@@ -87,8 +105,11 @@ export const unpairDevice = (deviceId: string) =>
 export const sendFile = (deviceId: string, filePath: string) =>
   invoke<void>("send_file", { deviceId, filePath });
 
-export const sendClipboard = (deviceId: string, text: string) =>
-  invoke<void>("send_clipboard", { deviceId, text });
+export const getClipboardSettings = () =>
+  invoke<ClipboardSettings>("get_clipboard_settings");
+
+export const setClipboardSettings = (settings: ClipboardSettings) =>
+  invoke<void>("set_clipboard_settings", { settings });
 
 export const onTransferEvent = (cb: (e: TransferEvent) => void): Promise<UnlistenFn> =>
   listen<TransferEvent>("transfer-event", (e) => cb(e.payload));
@@ -99,5 +120,5 @@ export const onPairingPrompt = (cb: (p: PairingPrompt) => void): Promise<Unliste
 export const onPairingDismiss = (cb: (requestId: number) => void): Promise<UnlistenFn> =>
   listen<{ requestId: number }>("pairing-dismiss", (e) => cb(e.payload.requestId));
 
-export const onClipboardReceived = (cb: (c: ClipboardReceived) => void): Promise<UnlistenFn> =>
-  listen<ClipboardReceived>("clipboard-received", (e) => cb(e.payload));
+export const onClipboardEvent = (cb: (e: ClipboardEvent) => void): Promise<UnlistenFn> =>
+  listen<ClipboardEvent>("clipboard-event", (e) => cb(e.payload));

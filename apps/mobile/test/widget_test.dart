@@ -6,7 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:freelife/backend.dart';
 import 'package:freelife/main.dart';
+import 'package:freelife/clipboard_sync.dart';
 import 'package:freelife/platform/airshare_channel.dart';
+import 'package:freelife/platform/clipboard_channel.dart';
+import 'package:freelife/src/rust/api/clipboard.dart' as rust;
 import 'package:freelife/platform/device_channel.dart';
 
 const laptop = DeviceSummary(
@@ -40,6 +43,29 @@ TransferUpdate update({
   savedPath: savedPath,
   error: error,
 );
+
+class FakeClipboardEngine implements ClipboardEngine {
+  @override
+  bool enabled = false;
+
+  @override
+  rust.LocalClipDecision localText(
+    String text, {
+    required bool markedSensitive,
+  }) => rust.LocalClipDecision.broadcast;
+
+  @override
+  Future<rust.LocalClipDecision> localPng(
+    Uint8List png, {
+    required bool markedSensitive,
+  }) async => rust.LocalClipDecision.broadcast;
+
+  @override
+  Stream<rust.ClipboardReceived> received() => const Stream.empty();
+
+  @override
+  Future<void> setEnabled(bool enabled) async => this.enabled = enabled;
+}
 
 class FakeBackend implements FreeLifeBackend {
   List<PairedDevice> paired = [
@@ -169,8 +195,19 @@ void main() {
   }) async {
     platform = FakePlatform(launchShared: launchShared)..install();
     addTearDown(platform.uninstall);
+    // The home page is taller than the default 800x600 test surface.
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(800, 2400);
+    addTearDown(tester.view.resetPhysicalSize);
     await tester.pumpWidget(
-      FreeLifeApp(backend: backend, airshare: platform.airshare),
+      FreeLifeApp(
+        backend: backend,
+        airshare: platform.airshare,
+        clipboard: ClipboardSyncController(
+          engine: FakeClipboardEngine(),
+          channel: ClipboardChannel(const MethodChannel('test/clipboard')),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
   }
@@ -318,7 +355,7 @@ void main() {
     backend.paired = [];
     await pumpApp(tester);
 
-    await tester.tap(find.text('Scan'));
+    await tester.tap(find.widgetWithText(TextButton, 'Scan'));
     await tester.pumpAndSettle();
     expect(find.widgetWithText(FilledButton, 'Pair'), findsOneWidget);
   });

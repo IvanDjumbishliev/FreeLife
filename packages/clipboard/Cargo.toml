@@ -1,0 +1,40 @@
+[package]
+name = "freelife-clipboard"
+description = "Universal Clipboard: sync clipboard contents between paired FreeLife devices."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+freelife-core.workspace = true
+freelife-transfer.workspace = true
+hex.workspace = true
+image.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+# System clipboard access and password-manager hints, desktop only. Android
+# reads the clipboard in Kotlin and feeds ClipboardSync directly.
+[target.'cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))'.dependencies]
+arboard.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+clipboard-win.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit.workspace = true
+objc2-foundation.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb.workspace = true
+wl-clipboard-rs.workspace = true
+
+[dev-dependencies]
+freelife-core.workspace = true
+tempfile.workspace = true

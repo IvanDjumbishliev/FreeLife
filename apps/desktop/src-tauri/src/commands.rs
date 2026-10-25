@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use freelife_clipboard::ClipboardSettings;
 use freelife_core::{DeviceId, DeviceInfo, OsType};
 use serde::Serialize;
 use tauri::State;
@@ -132,18 +133,18 @@ pub async fn send_file(
 }
 
 #[tauri::command]
-pub async fn send_clipboard(
+pub fn get_clipboard_settings(state: State<'_, AppState>) -> ClipboardSettings {
+    state.clipboard.settings()
+}
+
+#[tauri::command]
+pub async fn set_clipboard_settings(
     state: State<'_, AppState>,
-    device_id: String,
-    text: String,
+    settings: ClipboardSettings,
 ) -> Result<(), String> {
-    let id = parse_id(&device_id)?;
-    let conn = state
-        .node
-        .connection_to(id)
-        .await
-        .map_err(|e| e.to_string())?;
-    conn.send(freelife_transfer::clipboard_text(text))
+    state
+        .clipboard
+        .set_settings(settings)
         .await
         .map_err(|e| e.to_string())
 }

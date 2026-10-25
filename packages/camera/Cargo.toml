@@ -1,0 +1,25 @@
+[package]
+name = "freelife-camera"
+description = "ContinuityCamera: stream a phone's camera to a desktop as a virtual webcam."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+base64.workspace = true
+ffmpeg-next.workspace = true
+freelife-core.workspace = true
+freelife-transfer.workspace = true
+image.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+v4l.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

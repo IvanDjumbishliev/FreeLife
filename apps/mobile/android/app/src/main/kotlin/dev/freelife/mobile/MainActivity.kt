@@ -13,12 +13,14 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private var airShare: AirShareChannel? = null
+    private var clipboard: ClipboardChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         MethodChannel(messenger, DEVICE_CHANNEL).setMethodCallHandler(::onDeviceCall)
         airShare = AirShareChannel(this, messenger).also { it.handleIntent(intent) }
+        clipboard = ClipboardChannel(this, messenger)
     }
 
     // launchMode="singleTop": shares while we're open arrive here.
@@ -31,6 +33,8 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         airShare?.dispose()
         airShare = null
+        clipboard?.dispose()
+        clipboard = null
         super.onDestroy()
     }
 

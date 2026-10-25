@@ -20,6 +20,7 @@ anyhow = "1"
 flutter_rust_bridge = "=2.13.0"
 freelife-core = { path = "../../../packages/core" }
 freelife-transfer = { path = "../../../packages/transfer" }
+freelife-clipboard = { path = "../../../packages/clipboard" }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 tracing = "0.1"
 

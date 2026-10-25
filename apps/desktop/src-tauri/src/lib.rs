@@ -4,6 +4,9 @@ mod events;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use freelife_clipboard::{
+    ArboardBackend, ClipboardSync, ClipboardWatcher, WatcherConfig, SETTINGS_FILE,
+};
 use freelife_core::discovery::DiscoveredDevice;
 use freelife_core::identity::{FileKeyStore, KeyStore, KeyringStore};
 use freelife_core::OsType;
@@ -13,6 +16,9 @@ use tauri::Manager;
 /// State shared by all commands.
 pub struct AppState {
     pub node: Arc<Node>,
+    pub clipboard: Arc<ClipboardSync>,
+    /// Kept alive for the app's lifetime; dropping it stops clipboard polling.
+    pub clipboard_watcher: Mutex<Option<ClipboardWatcher>>,
     /// Devices from the most recent scan.
     pub nearby: Mutex<Vec<DiscoveredDevice>>,
 }
@@ -51,7 +57,7 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             // Every desktop target is covered; other Unixes are closest to Linux.
             let os = OsType::current().unwrap_or(OsType::Linux);
-            let config = NodeConfig::new(device_name(), os, key_store(&data_dir), data_dir);
+            let config = NodeConfig::new(device_name(), os, key_store(&data_dir), data_dir.clone());
             let node = tauri::async_runtime::block_on(Node::start(config))?;
             tracing::info!(
                 port = node.port(),
@@ -59,9 +65,23 @@ pub fn run() {
                 "FreeLife node started"
             );
 
-            events::forward(app.handle().clone(), node.clone());
+            // Clipboard sync starts with the app: it watches the clipboard and
+            // writes what paired devices send.
+            let clipboard = tauri::async_runtime::block_on(ClipboardSync::new(
+                node.clone(),
+                Some(data_dir.join(SETTINGS_FILE)),
+            ));
+            let watcher = ClipboardWatcher::spawn(
+                clipboard.clone(),
+                ArboardBackend::new,
+                WatcherConfig::default(),
+            )?;
+
+            events::forward(app.handle().clone(), node.clone(), clipboard.clone());
             app.manage(AppState {
                 node,
+                clipboard,
+                clipboard_watcher: Mutex::new(Some(watcher)),
                 nearby: Mutex::new(Vec::new()),
             });
             Ok(())
@@ -74,7 +94,8 @@ pub fn run() {
             commands::respond_pairing,
             commands::unpair_device,
             commands::send_file,
-            commands::send_clipboard,
+            commands::get_clipboard_settings,
+            commands::set_clipboard_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running FreeLife desktop");

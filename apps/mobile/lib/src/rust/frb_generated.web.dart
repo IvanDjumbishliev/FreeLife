@@ -6,6 +6,7 @@
 // Static analysis wrongly picks the IO variant, thus ignore this
 // ignore_for_file: argument_type_not_assignable
 
+import 'api/clipboard.dart';
 import 'api/node.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -22,6 +23,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw);
+
+  @protected
+  RustStreamSink<ClipboardReceived>
+  dco_decode_StreamSink_clipboard_received_Sse(dynamic raw);
 
   @protected
   RustStreamSink<PairingUpdate> dco_decode_StreamSink_pairing_update_Sse(
@@ -46,6 +51,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
 
   @protected
+  ClipKind dco_decode_clip_kind(dynamic raw);
+
+  @protected
+  ClipboardReceived dco_decode_clipboard_received(dynamic raw);
+
+  @protected
   DeviceSummary dco_decode_device_summary(dynamic raw);
 
   @protected
@@ -61,7 +72,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<PairedDevice> dco_decode_list_paired_device(dynamic raw);
 
   @protected
+  List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  LocalClipDecision dco_decode_local_clip_decision(dynamic raw);
 
   @protected
   NearbyDevice dco_decode_nearby_device(dynamic raw);
@@ -74,6 +91,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
+
+  @protected
+  Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw);
 
   @protected
   PairedDevice dco_decode_paired_device(dynamic raw);
@@ -103,6 +123,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
+  RustStreamSink<ClipboardReceived>
+  sse_decode_StreamSink_clipboard_received_Sse(SseDeserializer deserializer);
+
+  @protected
   RustStreamSink<PairingUpdate> sse_decode_StreamSink_pairing_update_Sse(
     SseDeserializer deserializer,
   );
@@ -127,6 +151,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
 
   @protected
+  ClipKind sse_decode_clip_kind(SseDeserializer deserializer);
+
+  @protected
+  ClipboardReceived sse_decode_clipboard_received(SseDeserializer deserializer);
+
+  @protected
   DeviceSummary sse_decode_device_summary(SseDeserializer deserializer);
 
   @protected
@@ -146,7 +176,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  LocalClipDecision sse_decode_local_clip_decision(
+    SseDeserializer deserializer,
+  );
 
   @protected
   NearbyDevice sse_decode_nearby_device(SseDeserializer deserializer);
@@ -161,6 +199,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
+
+  @protected
+  Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
   PairedDevice sse_decode_paired_device(SseDeserializer deserializer);
@@ -189,6 +230,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_clipboard_received_Sse(
+    RustStreamSink<ClipboardReceived> self,
     SseSerializer serializer,
   );
 
@@ -223,6 +270,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_clip_kind(ClipKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_clipboard_received(
+    ClipboardReceived self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_device_summary(DeviceSummary self, SseSerializer serializer);
 
   @protected
@@ -244,8 +300,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_local_clip_decision(
+    LocalClipDecision self,
     SseSerializer serializer,
   );
 
@@ -264,6 +329,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_opt_box_autoadd_i_64(
     PlatformInt64? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_list_prim_u_8_strict(
+    Uint8List? self,
     SseSerializer serializer,
   );
 
