@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1098576396;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1606922371;
 
 // Section: executor
 
@@ -470,6 +470,101 @@ fn wire__crate__api__node__init_app_impl(
         },
     )
 }
+fn wire__crate__api__node__notification_commands_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "notification_commands",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_sink = <StreamSink<
+                crate::api::node::NotificationCommand,
+                flutter_rust_bridge::for_generated::SseCodec,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::node::notification_commands(api_sink)?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__node__notification_publish_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "notification_publish",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_id = <String>::sse_decode(&mut deserializer);
+            let api_app_package = <String>::sse_decode(&mut deserializer);
+            let api_app_name = <String>::sse_decode(&mut deserializer);
+            let api_title = <String>::sse_decode(&mut deserializer);
+            let api_body = <String>::sse_decode(&mut deserializer);
+            let api_timestamp = <i64>::sse_decode(&mut deserializer);
+            let api_icon_bytes = <Option<Vec<u8>>>::sse_decode(&mut deserializer);
+            let api_has_reply_action = <bool>::sse_decode(&mut deserializer);
+            let api_reply_token = <Option<String>>::sse_decode(&mut deserializer);
+            let api_removed = <bool>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::node::notification_publish(
+                            api_id,
+                            api_app_package,
+                            api_app_name,
+                            api_title,
+                            api_body,
+                            api_timestamp,
+                            api_icon_bytes,
+                            api_has_reply_action,
+                            api_reply_token,
+                            api_removed,
+                        )
+                        .await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__node__pair_device_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -828,6 +923,19 @@ impl SseDecode
 }
 
 impl SseDecode
+    for StreamSink<
+        crate::api::node::NotificationCommand,
+        flutter_rust_bridge::for_generated::SseCodec,
+    >
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <String>::sse_decode(deserializer);
+        return StreamSink::deserialize(inner);
+    }
+}
+
+impl SseDecode
     for StreamSink<crate::api::node::PairingUpdate, flutter_rust_bridge::for_generated::SseCodec>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -986,6 +1094,20 @@ impl SseDecode for crate::api::node::NearbyDevice {
     }
 }
 
+impl SseDecode for crate::api::node::NotificationCommand {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_replyToken = <Option<String>>::sse_decode(deserializer);
+        let mut var_text = <Option<String>>::sse_decode(deserializer);
+        let mut var_notificationId = <Option<String>>::sse_decode(deserializer);
+        return crate::api::node::NotificationCommand {
+            reply_token: var_replyToken,
+            text: var_text,
+            notification_id: var_notificationId,
+        };
+    }
+}
+
 impl SseDecode for Option<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1132,6 +1254,13 @@ impl SseDecode for () {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {}
 }
 
+impl SseDecode for usize {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_u64::<NativeEndian>().unwrap() as _
+    }
+}
+
 fn pde_ffi_dispatcher_primary_impl(
     func_id: i32,
     port: flutter_rust_bridge::for_generated::MessagePort,
@@ -1159,18 +1288,20 @@ fn pde_ffi_dispatcher_primary_impl(
         ),
         11 => wire__crate__api__node__discover_devices_impl(port, ptr, rust_vec_len, data_len),
         12 => wire__crate__api__node__init_app_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__node__pair_device_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__node__pairing_events_impl(port, ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__node__send_file_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__clipboard__set_clipboard_enabled_impl(
+        13 => wire__crate__api__node__notification_commands_impl(port, ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__node__notification_publish_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__node__pair_device_impl(port, ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__node__pairing_events_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__node__send_file_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__clipboard__set_clipboard_enabled_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        19 => wire__crate__api__node__start_node_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__node__transfer_events_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__node__unpair_device_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__node__start_node_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__node__transfer_events_impl(port, ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__node__unpair_device_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1189,8 +1320,8 @@ fn pde_ffi_dispatcher_sync_impl(
         5 => wire__crate__api__camera__camera_stop_impl(ptr, rust_vec_len, data_len),
         7 => wire__crate__api__clipboard__clipboard_enabled_impl(ptr, rust_vec_len, data_len),
         9 => wire__crate__api__clipboard__clipboard_local_text_impl(ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__node__paired_devices_impl(ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__node__respond_pairing_impl(ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__node__paired_devices_impl(ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__node__respond_pairing_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1309,6 +1440,28 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::node::NearbyDevice>
     for crate::api::node::NearbyDevice
 {
     fn into_into_dart(self) -> crate::api::node::NearbyDevice {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::node::NotificationCommand {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.reply_token.into_into_dart().into_dart(),
+            self.text.into_into_dart().into_dart(),
+            self.notification_id.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::node::NotificationCommand
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::node::NotificationCommand>
+    for crate::api::node::NotificationCommand
+{
+    fn into_into_dart(self) -> crate::api::node::NotificationCommand {
         self
     }
 }
@@ -1440,6 +1593,18 @@ impl SseEncode for flutter_rust_bridge::for_generated::anyhow::Error {
 impl SseEncode
     for StreamSink<
         crate::api::clipboard::ClipboardReceived,
+        flutter_rust_bridge::for_generated::SseCodec,
+    >
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        unimplemented!("")
+    }
+}
+
+impl SseEncode
+    for StreamSink<
+        crate::api::node::NotificationCommand,
         flutter_rust_bridge::for_generated::SseCodec,
     >
 {
@@ -1591,6 +1756,15 @@ impl SseEncode for crate::api::node::NearbyDevice {
     }
 }
 
+impl SseEncode for crate::api::node::NotificationCommand {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Option<String>>::sse_encode(self.reply_token, serializer);
+        <Option<String>>::sse_encode(self.text, serializer);
+        <Option<String>>::sse_encode(self.notification_id, serializer);
+    }
+}
+
 impl SseEncode for Option<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1716,6 +1890,16 @@ impl SseEncode for u8 {
 impl SseEncode for () {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {}
+}
+
+impl SseEncode for usize {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer
+            .cursor
+            .write_u64::<NativeEndian>(self as _)
+            .unwrap();
+    }
 }
 
 #[cfg(not(target_family = "wasm"))]

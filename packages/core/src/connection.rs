@@ -701,10 +701,16 @@ mod tests {
 
         a.manager.connect(b.info.id, b.addr).await.unwrap();
         let msg = FreeLifeMessage::NotificationEvent {
-            app: "Messages".into(),
+            id: "messages:1".into(),
+            app_package: "org.example.messages".into(),
+            app_name: "Messages".into(),
             title: "Bob".into(),
             body: "hi".into(),
+            timestamp: 1,
+            icon_bytes: None,
+            has_reply_action: false,
             reply_token: None,
+            removed: false,
         };
         a.manager.send(b.info.id, msg.clone()).await.unwrap();
         assert_eq!(recv(&mut b).await, (a.info.id, msg));

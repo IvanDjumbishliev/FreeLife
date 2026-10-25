@@ -58,8 +58,10 @@ Turn your phone into a flexible camera for your computer.
 Bring your phone's notifications to your desktop.
 
 - View supported Android notifications from your computer.
-- Dismiss notifications and synchronize supported interactions.
-- Explore inline replies where the source application and platform permit them.
+- Reply from the desktop panel when the source notification supports Android inline replies.
+- Dismiss a mirrored notification from the desktop to clear it on the phone.
+- Keep a history of the latest 50 notifications, grouped by app, with per-app blocking controls.
+- Enable FreeLife notification access in Android Settings when prompted; Android requires this explicit system permission.
 
 ### 🔄 Handoff — Pick Up Where You Left Off
 

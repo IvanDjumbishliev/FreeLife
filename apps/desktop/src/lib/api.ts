@@ -71,6 +71,25 @@ export interface ClipboardSettings {
   syncImages: boolean;
 }
 
+export interface NotificationSettings {
+  blockedApps: string[];
+}
+
+export interface MirroredNotification {
+  id: string;
+  deviceId: string;
+  appPackage: string;
+  appName: string;
+  title: string;
+  body: string;
+  timestamp: number;
+  iconData: string | null;
+  hasReplyAction: boolean;
+  replyToken: string | null;
+  removed: boolean;
+  blocked: boolean;
+}
+
 export type ContentKind = "text" | "url" | "image";
 
 /** Summaries only: clipboard content itself never reaches the UI. */
@@ -111,6 +130,21 @@ export const getClipboardSettings = () =>
 export const setClipboardSettings = (settings: ClipboardSettings) =>
   invoke<void>("set_clipboard_settings", { settings });
 
+export const getNotificationSettings = () =>
+  invoke<NotificationSettings>("get_notification_settings");
+
+export const setNotificationSettings = (settings: NotificationSettings) =>
+  invoke<void>("set_notification_settings", { settings });
+
+export const sendNotificationReply = (
+  deviceId: string,
+  replyToken: string,
+  text: string,
+) => invoke<void>("send_notification_reply", { deviceId, replyToken, text });
+
+export const dismissNotification = (deviceId: string, notificationId: string) =>
+  invoke<void>("dismiss_notification", { deviceId, notificationId });
+
 export const onTransferEvent = (cb: (e: TransferEvent) => void): Promise<UnlistenFn> =>
   listen<TransferEvent>("transfer-event", (e) => cb(e.payload));
 
@@ -122,6 +156,11 @@ export const onPairingDismiss = (cb: (requestId: number) => void): Promise<Unlis
 
 export const onClipboardEvent = (cb: (e: ClipboardEvent) => void): Promise<UnlistenFn> =>
   listen<ClipboardEvent>("clipboard-event", (e) => cb(e.payload));
+
+export const onNotificationEvent = (
+  cb: (e: MirroredNotification) => void,
+): Promise<UnlistenFn> =>
+  listen<MirroredNotification>("notification-event", (e) => cb(e.payload));
 
 export type CameraEvent =
   | { type: "started"; width: number; height: number }

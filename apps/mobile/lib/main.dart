@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'backend.dart';
 import 'clipboard_sync.dart';
+import 'notifications.dart';
 import 'home_page.dart';
 import 'webcam_controller.dart';
 import 'platform/airshare_channel.dart';
@@ -28,12 +29,14 @@ Future<void> main() async {
       SnackBar(content: Text(message)),
     ),
   );
+  final notifications = NotificationBridge();
   runApp(
     FreeLifeApp(
       backend: const RustBackend(),
       airshare: AirShareChannel(),
       clipboard: clipboard,
       webcam: webcam,
+      notifications: notifications,
       messengerKey: messengerKey,
     ),
   );
@@ -46,6 +49,7 @@ class FreeLifeApp extends StatelessWidget {
     required this.airshare,
     required this.clipboard,
     required this.webcam,
+    required this.notifications,
     this.device = const DeviceChannel(),
     this.messengerKey,
   });
@@ -54,6 +58,7 @@ class FreeLifeApp extends StatelessWidget {
   final AirShareChannel airshare;
   final ClipboardSyncController clipboard;
   final WebcamController webcam;
+  final NotificationBridge notifications;
   final DeviceChannel device;
   final GlobalKey<ScaffoldMessengerState>? messengerKey;
 
@@ -76,6 +81,7 @@ class FreeLifeApp extends StatelessWidget {
         airshare: airshare,
         clipboard: clipboard,
         webcam: webcam,
+        notifications: notifications,
       ),
     );
   }

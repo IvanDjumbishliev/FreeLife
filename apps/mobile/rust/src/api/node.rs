@@ -117,6 +117,12 @@ pub struct TransferUpdate {
     pub error: Option<String>,
 }
 
+pub struct NotificationCommand {
+    pub reply_token: Option<String>,
+    pub text: Option<String>,
+    pub notification_id: Option<String>,
+}
+
 fn peer_name(node: &Node, peer: DeviceId) -> String {
     node.paired_devices()
         .into_iter()
@@ -324,6 +330,82 @@ pub fn transfer_events(sink: StreamSink<TransferUpdate>) -> anyhow::Result<()> {
                 }
                 Err(RecvError::Lagged(_)) => continue,
                 Err(RecvError::Closed) => break,
+            }
+        }
+    });
+    Ok(())
+}
+
+/// Forward one Android notification to every paired desktop.
+pub async fn notification_publish(
+    id: String,
+    app_package: String,
+    app_name: String,
+    title: String,
+    body: String,
+    timestamp: i64,
+    icon_bytes: Option<Vec<u8>>,
+    has_reply_action: bool,
+    reply_token: Option<String>,
+    removed: bool,
+) -> anyhow::Result<usize> {
+    let node = node()?.clone();
+    let timestamp = u64::try_from(timestamp).context("notification timestamp is negative")?;
+    on_runtime(async move {
+        let devices = node
+            .paired_devices()
+            .into_iter()
+            .filter(|device| device.info().os != OsType::Android)
+            .map(|device| device.id);
+        Ok(node
+            .send_to_many(
+                devices,
+                freelife_core::FreeLifeMessage::NotificationEvent {
+                    id,
+                    app_package,
+                    app_name,
+                    title,
+                    body,
+                    timestamp,
+                    icon_bytes,
+                    has_reply_action,
+                    reply_token,
+                    removed,
+                },
+                Duration::from_secs(5),
+            )
+            .await)
+    })
+    .await
+}
+
+/// Desktop replies and dismissals are delivered to Android through the
+/// notification platform channel.
+pub fn notification_commands(sink: StreamSink<NotificationCommand>) -> anyhow::Result<()> {
+    let mut rx = node()?.subscribe_messages();
+    RUNTIME.spawn(async move {
+        loop {
+            let command = match rx.recv().await {
+                Ok((
+                    _,
+                    freelife_core::FreeLifeMessage::NotificationReply { reply_token, text },
+                )) => NotificationCommand {
+                    reply_token: Some(reply_token),
+                    text: Some(text),
+                    notification_id: None,
+                },
+                Ok((_, freelife_core::FreeLifeMessage::NotificationDismiss { id })) => {
+                    NotificationCommand {
+                        reply_token: None,
+                        text: None,
+                        notification_id: Some(id),
+                    }
+                }
+                Ok(_) | Err(RecvError::Lagged(_)) => continue,
+                Err(RecvError::Closed) => break,
+            };
+            if sink.add(command).is_err() {
+                break;
             }
         }
     });

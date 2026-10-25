@@ -30,6 +30,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   dco_decode_StreamSink_clipboard_received_Sse(dynamic raw);
 
   @protected
+  RustStreamSink<NotificationCommand>
+  dco_decode_StreamSink_notification_command_Sse(dynamic raw);
+
+  @protected
   RustStreamSink<PairingUpdate> dco_decode_StreamSink_pairing_update_Sse(
     dynamic raw,
   );
@@ -85,6 +89,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   NearbyDevice dco_decode_nearby_device(dynamic raw);
 
   @protected
+  NotificationCommand dco_decode_notification_command(dynamic raw);
+
+  @protected
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
@@ -121,11 +128,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void dco_decode_unit(dynamic raw);
 
   @protected
+  BigInt dco_decode_usize(dynamic raw);
+
+  @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
   RustStreamSink<ClipboardReceived>
   sse_decode_StreamSink_clipboard_received_Sse(SseDeserializer deserializer);
+
+  @protected
+  RustStreamSink<NotificationCommand>
+  sse_decode_StreamSink_notification_command_Sse(SseDeserializer deserializer);
 
   @protected
   RustStreamSink<PairingUpdate> sse_decode_StreamSink_pairing_update_Sse(
@@ -191,6 +205,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   NearbyDevice sse_decode_nearby_device(SseDeserializer deserializer);
 
   @protected
+  NotificationCommand sse_decode_notification_command(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
@@ -229,6 +248,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
+  BigInt sse_decode_usize(SseDeserializer deserializer);
+
+  @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
     SseSerializer serializer,
@@ -237,6 +259,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_StreamSink_clipboard_received_Sse(
     RustStreamSink<ClipboardReceived> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_notification_command_Sse(
+    RustStreamSink<NotificationCommand> self,
     SseSerializer serializer,
   );
 
@@ -319,6 +347,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_nearby_device(NearbyDevice self, SseSerializer serializer);
 
   @protected
+  void sse_encode_notification_command(
+    NotificationCommand self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
@@ -368,6 +402,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_usize(BigInt self, SseSerializer serializer);
 }
 
 // Section: wire_class

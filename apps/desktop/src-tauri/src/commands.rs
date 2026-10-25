@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use freelife_clipboard::ClipboardSettings;
-use freelife_core::{DeviceId, DeviceInfo, OsType};
+use freelife_core::{DeviceId, DeviceInfo, FreeLifeMessage, OsType};
 use serde::Serialize;
 use tauri::State;
 
@@ -145,6 +145,71 @@ pub async fn set_clipboard_settings(
     state
         .clipboard
         .set_settings(settings)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_notification_settings(
+    state: State<'_, AppState>,
+) -> Result<crate::NotificationSettings, String> {
+    state
+        .notification_settings
+        .lock()
+        .map(|settings| settings.clone())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_notification_settings(
+    state: State<'_, AppState>,
+    settings: crate::NotificationSettings,
+) -> Result<(), String> {
+    let bytes = serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?;
+    std::fs::write(&state.notification_settings_path, bytes).map_err(|e| e.to_string())?;
+    *state
+        .notification_settings
+        .lock()
+        .map_err(|e| e.to_string())? = settings;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn send_notification_reply(
+    state: State<'_, AppState>,
+    device_id: String,
+    reply_token: String,
+    text: String,
+) -> Result<(), String> {
+    if text.len() > 4096 {
+        return Err("reply is longer than 4096 bytes".into());
+    }
+    let id = parse_id(&device_id)?;
+    state
+        .node
+        .connection_to(id)
+        .await
+        .map_err(|e| e.to_string())?
+        .send(FreeLifeMessage::NotificationReply { reply_token, text })
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn dismiss_notification(
+    state: State<'_, AppState>,
+    device_id: String,
+    notification_id: String,
+) -> Result<(), String> {
+    let id = parse_id(&device_id)?;
+    state
+        .node
+        .connection_to(id)
+        .await
+        .map_err(|e| e.to_string())?
+        .send(FreeLifeMessage::NotificationDismiss {
+            id: notification_id,
+        })
         .await
         .map_err(|e| e.to_string())
 }

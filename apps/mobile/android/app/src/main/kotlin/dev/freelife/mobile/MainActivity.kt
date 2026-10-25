@@ -15,6 +15,7 @@ class MainActivity : FlutterActivity() {
     private var airShare: AirShareChannel? = null
     private var clipboard: ClipboardChannel? = null
     private var camera: CameraChannel? = null
+    private var notifications: NotificationBridgeChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -23,6 +24,7 @@ class MainActivity : FlutterActivity() {
         airShare = AirShareChannel(this, messenger).also { it.handleIntent(intent) }
         clipboard = ClipboardChannel(this, messenger)
         camera = CameraChannel(this, messenger)
+        notifications = NotificationBridgeChannel(this, messenger)
     }
 
     // launchMode="singleTop": shares while we're open arrive here.
@@ -39,6 +41,8 @@ class MainActivity : FlutterActivity() {
         clipboard = null
         camera?.dispose()
         camera = null
+        notifications?.dispose()
+        notifications = null
         super.onDestroy()
     }
 

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'backend.dart';
 import 'clipboard_sync.dart';
+import 'notifications.dart';
 import 'webcam_controller.dart';
 import 'platform/airshare_channel.dart';
 import 'platform/device_channel.dart';
@@ -21,6 +22,7 @@ class HomePage extends StatefulWidget {
     required this.airshare,
     required this.clipboard,
     required this.webcam,
+    required this.notifications,
   });
 
   final FreeLifeBackend backend;
@@ -28,6 +30,7 @@ class HomePage extends StatefulWidget {
   final AirShareChannel airshare;
   final ClipboardSyncController clipboard;
   final WebcamController webcam;
+  final NotificationBridge notifications;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -43,6 +46,7 @@ class _HomePageState extends State<HomePage> {
   bool _scanning = false;
   String? _pairingWith;
   bool _clipboardOn = false;
+  bool? _notificationAccess;
 
   /// Pairing codes waiting for an answer; the first one is on screen.
   final _prompts = <PairingUpdate>[];
@@ -82,7 +86,10 @@ class _HomePageState extends State<HomePage> {
         deviceName: name,
       );
       if (!mounted) return;
-      setState(() => _self = self);
+      setState(() {
+        _self = self;
+        _paired = _backend.pairedDevices();
+      });
     } on Object catch (e) {
       if (mounted) setState(() => _startError = '$e');
       return;
@@ -90,23 +97,32 @@ class _HomePageState extends State<HomePage> {
 
     await widget.clipboard.start();
     await widget.webcam.init();
-    if (mounted) {
-      setState(() => _clipboardOn = widget.clipboard.engine.enabled);
-    }
-
     _subscriptions
       ..add(_backend.transferEvents().listen(_onTransfer))
       ..add(_backend.pairingEvents().listen(_onPairing))
       ..add(widget.airshare.sharedFiles.listen(_shareFiles));
     _refreshPaired();
     // Connection state isn't evented yet, so poll gently.
-    _refreshTimer = Timer.periodic(
-      const Duration(seconds: 5),
-      (_) => _refreshPaired(),
-    );
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _refreshPaired();
+      _refreshNotificationAccess();
+    });
 
     final launched = await widget.airshare.takeSharedFiles();
     if (launched.isNotEmpty) await _shareFiles(launched);
+
+    final notificationAccess = await widget.notifications.hasListenerAccess();
+    if (notificationAccess != null) {
+      widget.notifications.start(
+        onError: (error) => _snack('Notification bridge: $error', error: true),
+      );
+    }
+    if (mounted) {
+      setState(() {
+        _clipboardOn = widget.clipboard.engine.enabled;
+        _notificationAccess = notificationAccess;
+      });
+    }
   }
 
   Future<String> _deviceName() async {
@@ -120,6 +136,13 @@ class _HomePageState extends State<HomePage> {
   void _refreshPaired() {
     if (!mounted || _self == null) return;
     setState(() => _paired = _backend.pairedDevices());
+  }
+
+  Future<void> _refreshNotificationAccess() async {
+    final access = await widget.notifications.hasListenerAccess();
+    if (mounted && access != _notificationAccess) {
+      setState(() => _notificationAccess = access);
+    }
   }
 
   void _onTransfer(TransferUpdate u) {
@@ -320,6 +343,36 @@ class _HomePageState extends State<HomePage> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
+              if (_notificationAccess != null) ...[
+                const _Header('Notifications'),
+                ListTile(
+                  title: Text(
+                    _notificationAccess!
+                        ? 'Notification mirroring is on'
+                        : 'Enable notification mirroring',
+                  ),
+                  subtitle: Text(
+                    _notificationAccess!
+                        ? 'Phone notifications are shared with paired desktops.'
+                        : 'Allow FreeLife to read notifications in Android Settings.',
+                  ),
+                  trailing: _notificationAccess!
+                      ? const Icon(Icons.check_circle, color: Colors.green)
+                      : TextButton(
+                          onPressed: () async {
+                            try {
+                              await widget.notifications.openListenerSettings();
+                            } on Object catch (error) {
+                              _snack(
+                                'Could not open notification settings: $error',
+                                error: true,
+                              );
+                            }
+                          },
+                          child: const Text('Open Settings'),
+                        ),
+                ),
+              ],
               const _Header('Webcam'),
               ValueListenableBuilder<bool>(
                 valueListenable: widget.webcam.active,

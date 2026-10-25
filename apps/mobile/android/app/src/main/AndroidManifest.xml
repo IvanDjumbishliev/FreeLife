@@ -58,6 +58,15 @@
             android:name=".CameraStreamService"
             android:exported="false"
             android:foregroundServiceType="camera" />
+        <service
+            android:name=".NotificationListener"
+            android:label="FreeLife notification access"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService"/>
+            </intent-filter>
+        </service>
         <!-- No UI: reads or writes the clipboard while focused (see ClipboardActivity). -->
         <activity
             android:name=".ClipboardActivity"

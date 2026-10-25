@@ -28,7 +28,7 @@ use rustls::{
 use crate::{DeviceId, Error, Identity, Result, TrustStore, PUBLIC_KEY_LEN};
 
 /// ALPN protocol id; peers on a different protocol version fail the handshake.
-pub const ALPN: &[u8] = b"freelife/1";
+pub const ALPN: &[u8] = b"freelife/2";
 
 /// Placeholder SNI. Peers are identified by key, not name, so it isn't checked.
 pub const SERVER_NAME: &str = "peer.freelife.invalid";

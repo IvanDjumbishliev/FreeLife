@@ -2,7 +2,7 @@ mod commands;
 mod events;
 mod webcam;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use freelife_clipboard::{
@@ -24,6 +24,26 @@ pub struct AppState {
     pub nearby: Mutex<Vec<DiscoveredDevice>>,
     /// The phone whose camera is currently being used as a webcam, if any.
     pub webcam: tokio::sync::Mutex<Option<webcam::WebcamSession>>,
+    pub notification_settings: Arc<Mutex<NotificationSettings>>,
+    pub notification_settings_path: PathBuf,
+}
+
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationSettings {
+    pub blocked_apps: Vec<String>,
+}
+
+fn load_notification_settings(
+    path: &Path,
+) -> Result<NotificationSettings, Box<dyn std::error::Error>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Ok(NotificationSettings::default())
+        }
+        Err(error) => Err(error.into()),
+    }
 }
 
 fn device_name() -> String {
@@ -58,6 +78,11 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&data_dir)?;
+            let notification_settings_path = data_dir.join("notifications.json");
+            let notification_settings = Arc::new(Mutex::new(load_notification_settings(
+                &notification_settings_path,
+            )?));
             // Every desktop target is covered; other Unixes are closest to Linux.
             let os = OsType::current().unwrap_or(OsType::Linux);
             let config = NodeConfig::new(device_name(), os, key_store(&data_dir), data_dir.clone());
@@ -80,13 +105,20 @@ pub fn run() {
                 WatcherConfig::default(),
             )?;
 
-            events::forward(app.handle().clone(), node.clone(), clipboard.clone());
+            events::forward(
+                app.handle().clone(),
+                node.clone(),
+                clipboard.clone(),
+                notification_settings.clone(),
+            );
             app.manage(AppState {
                 node,
                 clipboard,
                 clipboard_watcher: Mutex::new(Some(watcher)),
                 nearby: Mutex::new(Vec::new()),
                 webcam: tokio::sync::Mutex::new(None),
+                notification_settings,
+                notification_settings_path,
             });
             Ok(())
         })
@@ -100,6 +132,10 @@ pub fn run() {
             commands::send_file,
             commands::get_clipboard_settings,
             commands::set_clipboard_settings,
+            commands::get_notification_settings,
+            commands::set_notification_settings,
+            commands::send_notification_reply,
+            commands::dismiss_notification,
             commands::phone_webcam_start,
             commands::phone_webcam_stop,
             commands::phone_webcam_status,

@@ -3,17 +3,24 @@ import {
   discoverDevices,
   getClipboardSettings,
   getDeviceInfo,
+  getNotificationSettings,
   listPairedDevices,
   onClipboardEvent,
+  onNotificationEvent,
   onPairingDismiss,
   onPairingPrompt,
   onTransferEvent,
   pairDevice,
   respondPairing,
   sendFile,
+  sendNotificationReply,
+  dismissNotification,
   setClipboardSettings,
+  setNotificationSettings,
   unpairDevice,
   type ClipboardSettings,
+  type MirroredNotification,
+  type NotificationSettings,
   type DeviceInfo,
   type NearbyDevice,
   type PairedDevice,
@@ -29,6 +36,7 @@ import { Transfers, type TransferView } from "./components/Transfers";
 import { ClipboardSettingsPanel } from "./components/ClipboardSettings";
 import { ClipboardToast } from "./components/ClipboardToast";
 import { WebcamCard } from "./components/WebcamCard";
+import { Notifications } from "./components/Notifications";
 
 export default function App() {
   const [self, setSelf] = useState<DeviceInfo | null>(null);
@@ -41,6 +49,12 @@ export default function App() {
   const [transfers, setTransfers] = useState<TransferView[]>([]);
   const [clipboardSettings, setClipboardSettingsState] = useState<ClipboardSettings | null>(null);
   const [clipboardNotice, setClipboardNotice] = useState<string | null>(null);
+  const [notificationSettings, setNotificationSettingsState] =
+    useState<NotificationSettings | null>(null);
+  const [notifications, setNotifications] = useState<MirroredNotification[]>(
+    loadNotifications,
+  );
+  const [notificationApps, setNotificationApps] = useState(loadNotificationApps);
   const toasts = useToasts();
   const { push } = toasts;
 
@@ -64,11 +78,34 @@ export default function App() {
   useEffect(() => {
     getDeviceInfo().then(setSelf).catch((e) => push(String(e), "error"));
     getClipboardSettings().then(setClipboardSettingsState).catch((e) => push(String(e), "error"));
+    getNotificationSettings()
+      .then((settings) => {
+        setNotificationSettingsState(settings);
+        const blocked = new Set(settings.blockedApps);
+        setNotifications((list) => list.filter((n) => !blocked.has(n.appPackage)));
+      })
+      .catch((e) => push(String(e), "error"));
     refreshPaired();
     // Connection state changes aren't evented yet, so poll gently.
     const timer = setInterval(refreshPaired, 5000);
     return () => clearInterval(timer);
   }, [refreshPaired, push]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("freelife.notifications", JSON.stringify(notifications));
+    } catch (error) {
+      console.warn("Could not persist mirrored notifications", error);
+    }
+  }, [notifications]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("freelife.notification-apps", JSON.stringify(notificationApps));
+    } catch (error) {
+      console.warn("Could not persist notification app list", error);
+    }
+  }, [notificationApps]);
 
   useTauriEvent(() =>
     onTransferEvent((e: TransferEvent) => {
@@ -103,6 +140,27 @@ export default function App() {
       }
     }),
   );
+  useTauriEvent(() =>
+    onNotificationEvent((event) => {
+      if (event.appPackage) {
+        setNotificationApps((apps) => {
+          const next = new Map(apps.map((app) => [app.appPackage, app]));
+          next.set(event.appPackage, {
+            appPackage: event.appPackage,
+            appName: event.appName,
+          });
+          return [...next.values()];
+        });
+      }
+      setNotifications((list) => {
+        const key = notificationKey(event);
+        const withoutCurrent = list.filter((item) => notificationKey(item) !== key);
+        return event.removed || event.blocked
+          ? withoutCurrent
+          : [event, ...withoutCurrent].slice(0, 50);
+      });
+    }),
+  );
 
   const selectedDevice = paired.find((p) => p.device.id === selected)?.device ?? null;
 
@@ -129,6 +187,25 @@ export default function App() {
       push(String(e), "error");
     } finally {
       setScanning(false);
+    }
+  }
+
+  function loadNotificationApps(): Array<{ appPackage: string; appName: string }> {
+    try {
+      const stored: unknown = JSON.parse(
+        localStorage.getItem("freelife.notification-apps") ?? "[]",
+      );
+      if (!Array.isArray(stored)) return [];
+      return stored.filter(
+        (item): item is { appPackage: string; appName: string } =>
+          typeof item === "object" &&
+          item !== null &&
+          typeof (item as Record<string, unknown>).appPackage === "string" &&
+          typeof (item as Record<string, unknown>).appName === "string",
+      );
+    } catch (error) {
+      console.warn("Could not load notification app list", error);
+      return [];
     }
   }
 
@@ -163,6 +240,43 @@ export default function App() {
       await setClipboardSettings(next);
     } catch (e) {
       push(String(e), "error");
+    }
+  }
+
+  async function changeNotificationSettings(next: NotificationSettings) {
+    setNotificationSettingsState(next);
+    const blocked = new Set(next.blockedApps);
+    setNotifications((list) => list.filter((notification) => !blocked.has(notification.appPackage)));
+    try {
+      await setNotificationSettings(next);
+    } catch (e) {
+      push(String(e), "error");
+    }
+  }
+
+  async function replyToNotification(
+    notification: MirroredNotification,
+    text: string,
+  ): Promise<boolean> {
+    if (!notification.replyToken) return false;
+    try {
+      await sendNotificationReply(notification.deviceId, notification.replyToken, text);
+      push(`Reply sent to ${notification.appName}`, "success");
+      return true;
+    } catch (e) {
+      push(`Reply failed: ${e}`, "error");
+      return false;
+    }
+  }
+
+  async function dismissMirroredNotification(notification: MirroredNotification) {
+    try {
+      await dismissNotification(notification.deviceId, notification.id);
+      setNotifications((list) =>
+        list.filter((item) => notificationKey(item) !== notificationKey(notification)),
+      );
+    } catch (e) {
+      push(`Could not dismiss notification: ${e}`, "error");
     }
   }
 
@@ -213,6 +327,15 @@ export default function App() {
         <h2>Transfers</h2>
         <Transfers transfers={transfers} />
       </section>
+
+      <Notifications
+        notifications={notifications}
+        apps={notificationApps}
+        settings={notificationSettings}
+        onSettingsChange={changeNotificationSettings}
+        onReply={replyToNotification}
+        onDismiss={dismissMirroredNotification}
+      />
 
       <section>
         <div className="row">
@@ -265,6 +388,37 @@ export default function App() {
       <ClipboardToast message={clipboardNotice} onDone={() => setClipboardNotice(null)} />
     </main>
   );
+}
+
+function notificationKey(notification: MirroredNotification): string {
+  return `${notification.deviceId}:${notification.id}`;
+}
+
+function loadNotifications(): MirroredNotification[] {
+  try {
+    const stored: unknown = JSON.parse(
+      localStorage.getItem("freelife.notifications") ?? "[]",
+    );
+    if (!Array.isArray(stored)) return [];
+    return stored
+      .filter((item): item is MirroredNotification => {
+        if (typeof item !== "object" || item === null) return false;
+        const value = item as Record<string, unknown>;
+        return (
+          typeof value.id === "string" &&
+          typeof value.deviceId === "string" &&
+          typeof value.appName === "string" &&
+          typeof value.title === "string" &&
+          typeof value.timestamp === "number" &&
+          typeof value.removed === "boolean" &&
+          typeof value.blocked === "boolean"
+        );
+      })
+      .slice(0, 50);
+  } catch (error) {
+    console.warn("Could not load mirrored notifications", error);
+    return [];
+  }
 }
 
 function applyTransferEvent(list: TransferView[], e: TransferEvent, peerName: string): TransferView[] {

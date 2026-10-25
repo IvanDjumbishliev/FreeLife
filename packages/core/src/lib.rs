@@ -30,7 +30,7 @@ pub use trust::TrustStore;
 
 /// Protocol version, checked during pairing and advertised via TLS ALPN.
 /// Bump on breaking wire changes.
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 
 /// TCP port FreeLife devices listen on, for both pairing and sessions.
 pub const DEFAULT_PORT: u16 = 7432;

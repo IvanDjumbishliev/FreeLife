@@ -57,11 +57,17 @@ pub enum FreeLifeMessage {
         payload: Vec<u8>,
     },
     NotificationEvent {
-        app: String,
+        id: String,
+        app_package: String,
+        app_name: String,
         title: String,
         body: String,
-        /// Present if the notification supports inline replies.
+        timestamp: u64,
+        icon_bytes: Option<Vec<u8>>,
+        has_reply_action: bool,
         reply_token: Option<String>,
+        /// Set when the source notification is removed.
+        removed: bool,
     },
     HandoffUrl {
         url: String,
@@ -89,6 +95,15 @@ pub enum FreeLifeMessage {
     },
     /// Phone → desktop: the camera stopped; no more frames until the next stream info.
     CameraEnded,
+    /// Desktop → phone: reply to the notification identified by `reply_token`.
+    NotificationReply {
+        reply_token: String,
+        text: String,
+    },
+    /// Either direction: remove the notification identified by its source ID.
+    NotificationDismiss {
+        id: String,
+    },
 }
 
 impl FreeLifeMessage {
@@ -196,22 +211,41 @@ mod tests {
                 payload: vec![0x89, b'P', b'N', b'G'],
             },
             FreeLifeMessage::NotificationEvent {
-                app: "Signal".into(),
+                id: "signal:42".into(),
+                app_package: "org.thoughtcrime.securesms".into(),
+                app_name: "Signal".into(),
                 title: "Alice".into(),
                 body: "Lunch?".into(),
+                timestamp: 1_700_000_000_000,
+                icon_bytes: Some(vec![0x89, b'P', b'N', b'G']),
+                has_reply_action: true,
                 reply_token: Some("tok-123".into()),
+                removed: false,
             },
             FreeLifeMessage::NotificationEvent {
-                app: "Calendar".into(),
+                id: "calendar:8".into(),
+                app_package: "com.example.calendar".into(),
+                app_name: "Calendar".into(),
                 title: "Standup".into(),
                 body: String::new(),
+                timestamp: 1_700_000_000_001,
+                icon_bytes: None,
+                has_reply_action: false,
                 reply_token: None,
+                removed: false,
             },
             FreeLifeMessage::HandoffUrl {
                 url: "https://example.com/?q=a&b=c".into(),
             },
             FreeLifeMessage::Ping,
             FreeLifeMessage::Pong,
+            FreeLifeMessage::NotificationReply {
+                reply_token: "tok-123".into(),
+                text: "On my way".into(),
+            },
+            FreeLifeMessage::NotificationDismiss {
+                id: "signal:42".into(),
+            },
         ]
     }
 
@@ -230,6 +264,21 @@ mod tests {
         assert_eq!(FreeLifeMessage::Pong.encode().unwrap(), [6]);
         let url = FreeLifeMessage::HandoffUrl { url: "a".into() };
         assert_eq!(url.encode().unwrap(), [4, 1, b'a']);
+        assert_eq!(
+            FreeLifeMessage::NotificationReply {
+                reply_token: String::new(),
+                text: String::new(),
+            }
+            .encode()
+            .unwrap()[0],
+            12
+        );
+        assert_eq!(
+            FreeLifeMessage::NotificationDismiss { id: String::new() }
+                .encode()
+                .unwrap()[0],
+            13
+        );
     }
 
     #[test]

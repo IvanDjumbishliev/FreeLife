@@ -257,6 +257,76 @@ button.primary {
   margin: -0.2rem 0 0;
 }
 
+.notification-group {
+  margin: 0.8rem 0;
+}
+
+.notification-group h3 {
+  font-size: 0.95rem;
+  margin-bottom: 0.3rem;
+}
+
+.notifications {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.notification {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #8884;
+}
+
+.notification-icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 5px;
+  object-fit: contain;
+}
+
+.notification-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-heading,
+.notification-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.notification-heading strong {
+  overflow-wrap: anywhere;
+}
+
+.notification-content p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0.35rem 0;
+}
+
+.notification-actions {
+  justify-content: flex-start;
+  margin-top: 0.5rem;
+}
+
+.notification-reply {
+  display: flex;
+  flex: 1;
+  gap: 0.5rem;
+}
+
+.notification-reply input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 0.3rem 0.5rem;
+}
+
 .clipboard-toast {
   position: fixed;
   left: 50%;

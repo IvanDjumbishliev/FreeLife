@@ -50,6 +50,36 @@ Stream<PairingUpdate> pairingEvents() =>
 Stream<TransferUpdate> transferEvents() =>
     RustLib.instance.api.crateApiNodeTransferEvents();
 
+/// Forward one Android notification to every paired desktop.
+Future<BigInt> notificationPublish({
+  required String id,
+  required String appPackage,
+  required String appName,
+  required String title,
+  required String body,
+  required PlatformInt64 timestamp,
+  Uint8List? iconBytes,
+  required bool hasReplyAction,
+  String? replyToken,
+  required bool removed,
+}) => RustLib.instance.api.crateApiNodeNotificationPublish(
+  id: id,
+  appPackage: appPackage,
+  appName: appName,
+  title: title,
+  body: body,
+  timestamp: timestamp,
+  iconBytes: iconBytes,
+  hasReplyAction: hasReplyAction,
+  replyToken: replyToken,
+  removed: removed,
+);
+
+/// Desktop replies and dismissals are delivered to Android through the
+/// notification platform channel.
+Stream<NotificationCommand> notificationCommands() =>
+    RustLib.instance.api.crateApiNodeNotificationCommands();
+
 /// Send `path` to a paired device. The stream carries this transfer's
 /// updates and closes after its `Complete` or `Failed` update.
 Stream<TransferUpdate> sendFile({
@@ -103,6 +133,27 @@ class NearbyDevice {
           runtimeType == other.runtimeType &&
           device == other.device &&
           paired == other.paired;
+}
+
+class NotificationCommand {
+  final String? replyToken;
+  final String? text;
+  final String? notificationId;
+
+  const NotificationCommand({this.replyToken, this.text, this.notificationId});
+
+  @override
+  int get hashCode =>
+      replyToken.hashCode ^ text.hashCode ^ notificationId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NotificationCommand &&
+          runtimeType == other.runtimeType &&
+          replyToken == other.replyToken &&
+          text == other.text &&
+          notificationId == other.notificationId;
 }
 
 class PairedDevice {

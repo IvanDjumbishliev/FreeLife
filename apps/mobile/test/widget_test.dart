@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:freelife/backend.dart';
 import 'package:freelife/main.dart';
+import 'package:freelife/notifications.dart';
 import 'package:freelife/clipboard_sync.dart';
 import 'package:freelife/platform/airshare_channel.dart';
 import 'package:freelife/platform/camera_channel.dart';
@@ -230,6 +231,9 @@ void main() {
         webcam: WebcamController(
           engine: FakeCameraEngine(),
           channel: CameraChannel(const MethodChannel('test/camera')),
+        ),
+        notifications: NotificationBridge(
+          const MethodChannel('test/notifications'),
         ),
       ),
     );
