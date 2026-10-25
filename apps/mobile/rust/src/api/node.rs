@@ -31,6 +31,7 @@ pub(crate) static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| 
 
 static NODE: OnceLock<Arc<Node>> = OnceLock::new();
 pub(crate) static CLIPBOARD: OnceLock<Arc<ClipboardSync>> = OnceLock::new();
+pub(crate) static CAMERA: OnceLock<Arc<freelife_camera::CameraSource>> = OnceLock::new();
 
 pub(crate) fn node() -> anyhow::Result<&'static Arc<Node>> {
     NODE.get()
@@ -225,6 +226,7 @@ pub async fn start_node(
         )
         .await;
         let _ = CLIPBOARD.set(clipboard);
+        let _ = CAMERA.set(freelife_camera::CameraSource::new(node.clone()));
         let node = NODE.get_or_init(|| node);
         Ok(DeviceSummary::from(node.device()))
     })

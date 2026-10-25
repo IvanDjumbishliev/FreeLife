@@ -9,6 +9,10 @@
     <!-- Clipboard sync keeps running in the background as a foreground service. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
+    <!-- ContinuityCamera: stream the rear camera to a paired computer. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <application
         android:label="FreeLife"
         android:name="${applicationName}"
@@ -50,6 +54,10 @@
             android:name=".ClipboardSyncService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+        <service
+            android:name=".CameraStreamService"
+            android:exported="false"
+            android:foregroundServiceType="camera" />
         <!-- No UI: reads or writes the clipboard while focused (see ClipboardActivity). -->
         <activity
             android:name=".ClipboardActivity"

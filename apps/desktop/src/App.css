@@ -270,3 +270,47 @@ button.primary {
   box-shadow: 0 2px 8px #0004;
   pointer-events: none;
 }
+
+.webcam-card {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #8884;
+  border-radius: 10px;
+}
+
+.webcam-body {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.8rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.webcam-preview {
+  width: 240px;
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  background: #0003;
+  object-fit: cover;
+}
+
+.webcam-preview.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.webcam-stats {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0.2rem 0.8rem;
+  margin: 0;
+}
+
+.webcam-stats dt {
+  opacity: 0.65;
+}
+
+.webcam-stats dd {
+  margin: 0;
+}

@@ -40,7 +40,21 @@ jobs:
           sudo apt-get install -y \
             build-essential curl wget file \
             libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
-            libayatana-appindicator3-dev librsvg2-dev
+            libayatana-appindicator3-dev librsvg2-dev \
+            pkg-config libclang-dev \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
+
+      # FFmpeg shared build for the Windows job (ffmpeg-sys-next links to it).
+      - name: Install FFmpeg (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-31-14-10/ffmpeg-n7.1.5-12-g1fdbca85aa-win64-gpl-shared-7.1.zip"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath $env:RUNNER_TEMP
+          $dir = (Get-ChildItem $env:RUNNER_TEMP -Directory -Filter "ffmpeg-n7*win64*").FullName
+          echo "FFMPEG_DIR=$dir" >> $env:GITHUB_ENV
+          echo "$dir\bin" >> $env:GITHUB_PATH
 
       - uses: dtolnay/rust-toolchain@stable
 

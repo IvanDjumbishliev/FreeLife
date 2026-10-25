@@ -28,6 +28,7 @@ import { Toasts, useToasts } from "./components/Toasts";
 import { Transfers, type TransferView } from "./components/Transfers";
 import { ClipboardSettingsPanel } from "./components/ClipboardSettings";
 import { ClipboardToast } from "./components/ClipboardToast";
+import { WebcamCard } from "./components/WebcamCard";
 
 export default function App() {
   const [self, setSelf] = useState<DeviceInfo | null>(null);
@@ -202,6 +203,10 @@ export default function App() {
           </ul>
         )}
         <DropZone target={selectedDevice?.name ?? null} onDrop={handleDrop} />
+        <WebcamCard
+          phone={paired.find((p) => p.connected && p.device.os === "Android") ?? null}
+          onError={(message) => push(message, "error")}
+        />
       </section>
 
       <section>

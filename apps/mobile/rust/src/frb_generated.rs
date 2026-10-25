@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 2107087442;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1098576396;
 
 // Section: executor
 
@@ -47,6 +47,176 @@ flutter_rust_bridge::frb_generated_default_handler!();
 
 // Section: wire_funcs
 
+fn wire__crate__api__camera__camera_has_subscribers_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "camera_has_subscribers",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok = crate::api::camera::camera_has_subscribers()?;
+                    std::result::Result::Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
+fn wire__crate__api__camera__camera_push_frame_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "camera_push_frame",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_data = <Vec<u8>>::sse_decode(&mut deserializer);
+            let api_keyframe = <bool>::sse_decode(&mut deserializer);
+            let api_timestamp_us = <i64>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok = crate::api::camera::camera_push_frame(
+                        api_data,
+                        api_keyframe,
+                        api_timestamp_us,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
+fn wire__crate__api__camera__camera_set_stream_info_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "camera_set_stream_info",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_width = <u32>::sse_decode(&mut deserializer);
+            let api_height = <u32>::sse_decode(&mut deserializer);
+            let api_fps = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok =
+                        crate::api::camera::camera_set_stream_info(api_width, api_height, api_fps)?;
+                    std::result::Result::Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
+fn wire__crate__api__camera__camera_source_start_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "camera_source_start",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::camera::camera_source_start().await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__camera__camera_stop_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "camera_stop",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok = crate::api::camera::camera_stop()?;
+                    std::result::Result::Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
 fn wire__crate__api__clipboard__clipboard_applied_text_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -971,35 +1141,36 @@ fn pde_ffi_dispatcher_primary_impl(
 ) {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        1 => wire__crate__api__clipboard__clipboard_applied_text_impl(
+        4 => wire__crate__api__camera__camera_source_start_impl(port, ptr, rust_vec_len, data_len),
+        6 => wire__crate__api__clipboard__clipboard_applied_text_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        3 => {
+        8 => {
             wire__crate__api__clipboard__clipboard_local_png_impl(port, ptr, rust_vec_len, data_len)
         }
-        5 => wire__crate__api__clipboard__clipboard_received_events_impl(
+        10 => wire__crate__api__clipboard__clipboard_received_events_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        6 => wire__crate__api__node__discover_devices_impl(port, ptr, rust_vec_len, data_len),
-        7 => wire__crate__api__node__init_app_impl(port, ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__node__pair_device_impl(port, ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__node__pairing_events_impl(port, ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__node__send_file_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__clipboard__set_clipboard_enabled_impl(
+        11 => wire__crate__api__node__discover_devices_impl(port, ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__node__init_app_impl(port, ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__node__pair_device_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__node__pairing_events_impl(port, ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__node__send_file_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__clipboard__set_clipboard_enabled_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        14 => wire__crate__api__node__start_node_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__node__transfer_events_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__node__unpair_device_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__node__start_node_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__node__transfer_events_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__node__unpair_device_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1012,10 +1183,14 @@ fn pde_ffi_dispatcher_sync_impl(
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        2 => wire__crate__api__clipboard__clipboard_enabled_impl(ptr, rust_vec_len, data_len),
-        4 => wire__crate__api__clipboard__clipboard_local_text_impl(ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__node__paired_devices_impl(ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__node__respond_pairing_impl(ptr, rust_vec_len, data_len),
+        1 => wire__crate__api__camera__camera_has_subscribers_impl(ptr, rust_vec_len, data_len),
+        2 => wire__crate__api__camera__camera_push_frame_impl(ptr, rust_vec_len, data_len),
+        3 => wire__crate__api__camera__camera_set_stream_info_impl(ptr, rust_vec_len, data_len),
+        5 => wire__crate__api__camera__camera_stop_impl(ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__clipboard__clipboard_enabled_impl(ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__clipboard__clipboard_local_text_impl(ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__node__paired_devices_impl(ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__node__respond_pairing_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }

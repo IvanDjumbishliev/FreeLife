@@ -14,6 +14,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var airShare: AirShareChannel? = null
     private var clipboard: ClipboardChannel? = null
+    private var camera: CameraChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -21,6 +22,7 @@ class MainActivity : FlutterActivity() {
         MethodChannel(messenger, DEVICE_CHANNEL).setMethodCallHandler(::onDeviceCall)
         airShare = AirShareChannel(this, messenger).also { it.handleIntent(intent) }
         clipboard = ClipboardChannel(this, messenger)
+        camera = CameraChannel(this, messenger)
     }
 
     // launchMode="singleTop": shares while we're open arrive here.
@@ -35,6 +37,8 @@ class MainActivity : FlutterActivity() {
         airShare = null
         clipboard?.dispose()
         clipboard = null
+        camera?.dispose()
+        camera = null
         super.onDestroy()
     }
 

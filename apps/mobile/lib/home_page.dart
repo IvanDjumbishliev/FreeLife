@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'backend.dart';
 import 'clipboard_sync.dart';
+import 'webcam_controller.dart';
 import 'platform/airshare_channel.dart';
 import 'platform/device_channel.dart';
 import 'util/format.dart';
@@ -19,12 +20,14 @@ class HomePage extends StatefulWidget {
     required this.device,
     required this.airshare,
     required this.clipboard,
+    required this.webcam,
   });
 
   final FreeLifeBackend backend;
   final DeviceChannel device;
   final AirShareChannel airshare;
   final ClipboardSyncController clipboard;
+  final WebcamController webcam;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -86,6 +89,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     await widget.clipboard.start();
+    await widget.webcam.init();
     if (mounted) {
       setState(() => _clipboardOn = widget.clipboard.engine.enabled);
     }
@@ -316,6 +320,25 @@ class _HomePageState extends State<HomePage> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
+              const _Header('Webcam'),
+              ValueListenableBuilder<bool>(
+                valueListenable: widget.webcam.active,
+                builder: (context, on, _) => SwitchListTile(
+                  title: const Text('Start Webcam'),
+                  subtitle: Text(
+                    on
+                        ? 'On. Paired computers can use this camera. '
+                              'A notification stays up while it runs.'
+                        : 'Off. Turn on to let a paired computer use the rear camera.',
+                  ),
+                  value: on,
+                  onChanged: self == null
+                      ? null
+                      : (value) => value
+                            ? widget.webcam.start()
+                            : widget.webcam.stop(),
+                ),
+              ),
               const _Header('Transfers'),
               if (_transfers.isEmpty)
                 const ListTile(

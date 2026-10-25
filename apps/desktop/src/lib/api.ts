@@ -122,3 +122,29 @@ export const onPairingDismiss = (cb: (requestId: number) => void): Promise<Unlis
 
 export const onClipboardEvent = (cb: (e: ClipboardEvent) => void): Promise<UnlistenFn> =>
   listen<ClipboardEvent>("clipboard-event", (e) => cb(e.payload));
+
+export type CameraEvent =
+  | { type: "started"; width: number; height: number }
+  | {
+      type: "stats";
+      width: number;
+      height: number;
+      fps: number;
+      latencyMs: number | null;
+      framesTotal: number;
+      decodeErrors: number;
+      sink: string;
+    }
+  | { type: "preview"; pngBase64: string }
+  | { type: "ended" }
+  | { type: "sinkError"; message: string };
+
+export const phoneWebcamStart = (deviceId: string) =>
+  invoke<void>("phone_webcam_start", { deviceId });
+
+export const phoneWebcamStop = () => invoke<void>("phone_webcam_stop");
+
+export const phoneWebcamStatus = () => invoke<string | null>("phone_webcam_status");
+
+export const onCameraEvent = (cb: (e: CameraEvent) => void): Promise<UnlistenFn> =>
+  listen<CameraEvent>("camera-event", (e) => cb(e.payload));

@@ -92,6 +92,16 @@ impl ActiveConnection {
             .map_err(|_| Error::NotConnected(self.device_id))
     }
 
+    /// Queue `message` without waiting. Returns `Ok(false)` if the queue is
+    /// full, so real-time senders can drop data rather than fall behind.
+    pub fn try_send(&self, message: FreeLifeMessage) -> Result<bool> {
+        match self.outgoing.try_send(message) {
+            Ok(()) => Ok(true),
+            Err(mpsc::error::TrySendError::Full(_)) => Ok(false),
+            Err(mpsc::error::TrySendError::Closed(_)) => Err(Error::NotConnected(self.device_id)),
+        }
+    }
+
     pub fn is_closed(&self) -> bool {
         self.outgoing.is_closed()
     }

@@ -178,7 +178,8 @@ How devices connect (details in the module docs of `packages/core/src/`):
 3. **Pairing**: a commit/reveal X25519 exchange. Both screens show a 6-digit code; once the user confirms it matches, each side signs the transcript and stores the other's key in `trusted_devices.json`.
 4. **Sessions**: TLS 1.3 with each side's raw Ed25519 key pinned (RFC 7250, no certificates), carrying length-prefixed bincode `FreeLifeMessage`s. Sessions send a keep-alive ping every 30 s.
 5. **Universal Clipboard** (`packages/clipboard`): a copy on one device is sent to paired devices within milliseconds. Text, URLs and images are supported. Content is never logged, only short hashes. Copies that look like passwords, private keys or API tokens are not sent, and neither are copies that password managers mark as sensitive. A copy that a device has just sent is not sent back.
-6. **AirShare** (`packages/transfer`): a `FileTransferRequest` carrying the file's SHA-256, then 256 KB `FileChunk`s. The receiver writes chunks at their offsets (so order doesn't matter), verifies the checksum, and only then moves the file into the download folder. `freelife_transfer::node::Node` ties everything together for the apps.
+6. **ContinuityCamera** (`packages/camera`): a paired phone's rear camera appears as a webcam on the computer. The phone encodes 1080p H.264 at 30 fps and sends it over the encrypted FreeLife session. The desktop decodes it with FFmpeg and writes it to a virtual camera. Only the Linux (v4l2loopback) writer is implemented; Windows and macOS need a virtual camera driver that isn't built yet.
+7. **AirShare** (`packages/transfer`): a `FileTransferRequest` carrying the file's SHA-256, then 256 KB `FileChunk`s. The receiver writes chunks at their offsets (so order doesn't matter), verifies the checksum, and only then moves the file into the download folder. `freelife_transfer::node::Node` ties everything together for the apps.
 
 ### Relay server
 
@@ -208,6 +209,15 @@ Tauri commands live in `src-tauri/src/commands.rs`; their typed TypeScript wrapp
 
 **Clipboard sync** starts with the app and can be turned off in Settings. On Windows it works as you copy. On Linux it needs a Wayland compositor that allows clipboard access, or X11. The macOS backend is written but hasn't been built or run yet. Timing: a copy reaches a paired device in about 50 ms on a LAN (the poll interval plus under 1 ms of network time). On Android it works while the app is on screen. In the background, tap **Sync clipboard** in the FreeLife notification (see the Android notes below).
 
+**ContinuityCamera (Linux):** create the virtual camera once per boot, then use the phone from the desktop app's *Use Phone as Webcam* card:
+
+```bash
+sudo apt install v4l2loopback-dkms      # or your distribution's package
+sudo ./scripts/freelife-webcam-setup.sh # creates /dev/video10 "FreeLife Camera"
+```
+
+Desktop builds need FFmpeg's development packages (`libavcodec-dev libavformat-dev libavutil-dev libswscale-dev`, plus `libclang-dev` and `pkg-config`). On Windows, the webcam card reports that no virtual camera is available yet.
+
 To try AirShare, run the app on two machines on the same network. Click **Scan**, **Pair** a device, and confirm the 6-digit code on both. Then select the device and drop files onto the window. Received files go to `~/Downloads/FreeLife/`.
 
 ### Mobile app (Flutter)
@@ -231,10 +241,13 @@ Android clipboard sync has limits set by Android itself:
 - **Android 13+** shows a "Copied" message whenever FreeLife writes to the clipboard. Android draws this message, and apps cannot turn it off.
 - Copies marked sensitive (`EXTRA_IS_SENSITIVE`, Android 13+) are never synced.
 
-Three Android platform channels connect Dart and Kotlin:
+**ContinuityCamera (Android):** turn on **Start Webcam** in the app. A persistent notification (*FreeLife Webcam active — tap to stop.*) stays up while the camera runs. Capture uses Camera2 directly into a MediaCodec H.264 encoder (1920×1080, 30 fps, 6 Mbps). The encoder runs whenever the switch is on. Frames only leave the phone while a paired computer is subscribed, and frames a slow link can't take are dropped. The phone build doesn't include FFmpeg, since it only encodes.
+
+Four Android platform channels connect Dart and Kotlin:
 
 - `dev.freelife/device` (`MainActivity.kt` ↔ `lib/platform/device_channel.dart`): device info, battery, clipboard.
 - `dev.freelife/clipboard` (`ClipboardChannel.kt`, `ClipboardSyncService.kt`, `ClipboardActivity.kt` ↔ `lib/platform/clipboard_channel.dart`): clipboard reads and writes, the sync service, and the notification fallback.
+- `dev.freelife/camera` (`CameraChannel.kt`, `CameraStream.kt`, `CameraStreamService.kt` ↔ `lib/platform/camera_channel.dart`): camera capture, H.264 encoding, and the webcam notification.
 - `dev.freelife/airshare` (`AirShareChannel.kt` ↔ `lib/platform/airshare_channel.dart`): "Share via FreeLife" intents, received-file notifications, storage paths, and the Wi-Fi multicast lock mDNS needs.
 
 Received files are saved to the app's own Downloads folder (`Android/data/dev.freelife.mobile/files/Download/FreeLife`). Tapping the notification opens them.

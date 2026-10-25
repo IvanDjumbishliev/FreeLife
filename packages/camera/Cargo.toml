@@ -7,12 +7,18 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+# `decode` pulls in FFmpeg. The desktop needs it; the phone only encodes and
+# builds without it (see apps/mobile/rust/Cargo.toml).
+[features]
+default = ["decode"]
+decode = ["dep:ffmpeg-next", "dep:base64", "dep:image"]
+
 [dependencies]
-base64.workspace = true
-ffmpeg-next.workspace = true
+base64 = { workspace = true, optional = true }
+ffmpeg-next = { workspace = true, optional = true }
 freelife-core.workspace = true
 freelife-transfer.workspace = true
-image.workspace = true
+image = { workspace = true, optional = true }
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -23,3 +29,7 @@ v4l.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[[test]]
+name = "camera_pipeline"
+required-features = ["decode"]

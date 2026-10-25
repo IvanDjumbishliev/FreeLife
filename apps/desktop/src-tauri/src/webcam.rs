@@ -48,7 +48,7 @@ pub async fn start(
         .await
         .map_err(|e| e.to_string())?;
 
-    let feed = tauri::async_runtime::spawn(async move {
+    let feed = tokio::spawn(async move {
         let mut receiver = receiver;
         loop {
             match messages.recv().await {
@@ -63,7 +63,7 @@ pub async fn start(
     });
 
     let forward_app = app.clone();
-    let forward = tauri::async_runtime::spawn(async move {
+    let forward = tokio::spawn(async move {
         loop {
             match events.recv().await {
                 Ok(event) => {

@@ -8,6 +8,8 @@ import 'package:freelife/backend.dart';
 import 'package:freelife/main.dart';
 import 'package:freelife/clipboard_sync.dart';
 import 'package:freelife/platform/airshare_channel.dart';
+import 'package:freelife/platform/camera_channel.dart';
+import 'package:freelife/webcam_controller.dart';
 import 'package:freelife/platform/clipboard_channel.dart';
 import 'package:freelife/src/rust/api/clipboard.dart' as rust;
 import 'package:freelife/platform/device_channel.dart';
@@ -65,6 +67,24 @@ class FakeClipboardEngine implements ClipboardEngine {
 
   @override
   Future<void> setEnabled(bool enabled) async => this.enabled = enabled;
+}
+
+class FakeCameraEngine implements CameraEngine {
+  @override
+  Future<void> startSource() async {}
+
+  @override
+  void setStreamInfo(StreamFormat format) {}
+
+  @override
+  void pushFrame(
+    Uint8List data, {
+    required bool keyframe,
+    required int timestampUs,
+  }) {}
+
+  @override
+  void stopStream() {}
 }
 
 class FakeBackend implements FreeLifeBackend {
@@ -206,6 +226,10 @@ void main() {
         clipboard: ClipboardSyncController(
           engine: FakeClipboardEngine(),
           channel: ClipboardChannel(const MethodChannel('test/clipboard')),
+        ),
+        webcam: WebcamController(
+          engine: FakeCameraEngine(),
+          channel: CameraChannel(const MethodChannel('test/camera')),
         ),
       ),
     );
