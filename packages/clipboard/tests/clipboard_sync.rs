@@ -403,3 +403,46 @@ async fn settings_persist() {
     let reloaded = ClipboardSync::new(a.node.clone(), Some(path)).await;
     assert_eq!(reloaded.settings(), settings);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn thousand_clipboard_updates_are_delivered_without_drops() {
+    const UPDATES: usize = 1_000;
+    let (a, b) = paired_pair().await;
+    let mut messages = b.node.subscribe_messages();
+    let started = Instant::now();
+
+    for index in 0..UPDATES {
+        let payload = index.to_string().into_bytes();
+        let delivered = a
+            .node
+            .send_to_many(
+                [b.node.device().id],
+                freelife_core::FreeLifeMessage::ClipboardUpdate {
+                    content_type: freelife_core::ClipboardContentType::Text,
+                    payload: payload.clone(),
+                },
+                Duration::from_secs(5),
+            )
+            .await;
+        assert_eq!(delivered, 1, "update {index} wasn't delivered to the connection");
+        let (from, message) = tokio::time::timeout(Duration::from_secs(60), messages.recv())
+            .await
+            .expect("clipboard update load exceeded 60 seconds")
+            .expect("clipboard receiver dropped an update");
+        assert_eq!(from, a.node.device().id);
+        assert_eq!(
+            message,
+            freelife_core::FreeLifeMessage::ClipboardUpdate {
+                content_type: freelife_core::ClipboardContentType::Text,
+                payload,
+            },
+            "clipboard update {index} was reordered or altered"
+        );
+    }
+
+    assert!(
+        started.elapsed() < Duration::from_secs(60),
+        "1000 clipboard updates took {:?}, slower than 1000/minute",
+        started.elapsed()
+    );
+}

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=FreeLife
+Comment=Connect your devices
+Exec=freelife-desktop
+Icon=org.freelife.FreeLife
+Terminal=false
+Type=Application
+Categories=Utility;Network;
+StartupNotify=true

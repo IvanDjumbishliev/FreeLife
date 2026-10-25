@@ -16,6 +16,8 @@ class NotificationBridge {
   final MethodChannel _channel;
   StreamSubscription<rust.NotificationCommand>? _commands;
   void Function(Object error)? _onError;
+  bool _enabled = true;
+  bool _handoffEnabled = true;
 
   Future<bool?> hasListenerAccess() async {
     try {
@@ -32,10 +34,27 @@ class NotificationBridge {
 
   void start({required void Function(Object error) onError}) {
     _onError = onError;
-    _commands ??= rust.notificationCommands().listen(
-      _handleCommand,
-      onError: (Object error) => _report(error),
-    );
+    if (_enabled) {
+      _commands ??= rust.notificationCommands().listen(
+        _handleCommand,
+        onError: (Object error) => _report(error),
+      );
+    }
+  }
+
+  Future<void> setEnabled(bool enabled) async {
+    _enabled = enabled;
+    if (enabled) {
+      final onError = _onError;
+      if (onError != null) start(onError: onError);
+    } else {
+      await _commands?.cancel();
+      _commands = null;
+    }
+  }
+
+  void setHandoffEnabled(bool enabled) {
+    _handoffEnabled = enabled;
   }
 
   Future<Object?> _onNativeCall(MethodCall call) async {
@@ -43,6 +62,7 @@ class NotificationBridge {
         call.method != 'notificationRemoved') {
       return null;
     }
+    if (!_enabled) return null;
     final args = Map<Object?, Object?>.from(call.arguments as Map);
     try {
       await rust.notificationPublish(
@@ -67,6 +87,7 @@ class NotificationBridge {
     try {
       if (command.notificationId == 'freelife-handoff' &&
           command.replyToken != null) {
+        if (!_handoffEnabled) return;
         final opened = await _channel.invokeMethod<bool>('openHandoffUrl', {
           'url': command.replyToken,
           'sourceDevice': command.text ?? 'a paired device',
@@ -74,6 +95,8 @@ class NotificationBridge {
         if (opened != true) {
           _report(StateError('The handoff URL could not be opened.'));
         }
+      } else if (!_enabled) {
+        return;
       } else if (command.replyToken != null && command.text != null) {
         final submitted = await _channel.invokeMethod<bool>('reply', {
           'replyToken': command.replyToken,

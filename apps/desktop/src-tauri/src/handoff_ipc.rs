@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use freelife_core::FreeLifeMessage;
 use freelife_transfer::node::Node;
@@ -38,6 +38,7 @@ pub fn start(
     data_dir: &Path,
     node: Arc<Node>,
     app: AppHandle,
+    feature_settings: Arc<Mutex<crate::FeatureSettings>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(unix)]
     {
@@ -72,8 +73,11 @@ pub fn start(
                     Ok((stream, _)) => {
                         let node = node.clone();
                         let app = app.clone();
+                        let feature_settings = feature_settings.clone();
                         tauri::async_runtime::spawn(async move {
-                            if let Err(error) = serve(stream, node, app).await {
+                            if let Err(error) =
+                                serve(stream, node, app, feature_settings).await
+                            {
                                 tracing::warn!(%error, "browser handoff IPC request failed");
                             }
                         });
@@ -108,8 +112,9 @@ pub fn start(
                 }
                 let node = node.clone();
                 let app = app.clone();
+                let feature_settings = feature_settings.clone();
                 tauri::async_runtime::spawn(async move {
-                    if let Err(error) = serve(server, node, app).await {
+                    if let Err(error) = serve(server, node, app, feature_settings).await {
                         tracing::warn!(%error, "browser handoff IPC request failed");
                     }
                 });
@@ -119,7 +124,7 @@ pub fn start(
 
     #[cfg(not(any(unix, windows)))]
     {
-        let _ = (data_dir, node, app);
+        let _ = (data_dir, node, app, feature_settings);
         return Err("browser handoff IPC is not supported on this platform".into());
     }
     Ok(())
@@ -130,11 +135,12 @@ async fn serve<S>(
     stream: S,
     node: Arc<Node>,
     app: AppHandle,
+    feature_settings: Arc<Mutex<crate::FeatureSettings>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    serve_stream(stream, node, app).await
+    serve_stream(stream, node, app, feature_settings).await
 }
 
 #[cfg(windows)]
@@ -142,17 +148,19 @@ async fn serve<S>(
     stream: S,
     node: Arc<Node>,
     app: AppHandle,
+    feature_settings: Arc<Mutex<crate::FeatureSettings>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    serve_stream(stream, node, app).await
+    serve_stream(stream, node, app, feature_settings).await
 }
 
 async fn serve_stream<S>(
     stream: S,
     node: Arc<Node>,
     app: AppHandle,
+    feature_settings: Arc<Mutex<crate::FeatureSettings>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
@@ -186,7 +194,7 @@ where
         Response::error("empty request")
     } else {
         match serde_json::from_slice(&line) {
-            Ok(request) => handle_request(request, node, app).await,
+            Ok(request) => handle_request(request, node, app, feature_settings).await,
             Err(error) => Response::error(&format!("invalid request: {error}")),
         }
     };
@@ -196,7 +204,20 @@ where
     Ok(())
 }
 
-async fn handle_request(request: Request, node: Arc<Node>, app: AppHandle) -> Response {
+async fn handle_request(
+    request: Request,
+    node: Arc<Node>,
+    app: AppHandle,
+    feature_settings: Arc<Mutex<crate::FeatureSettings>>,
+) -> Response {
+    match feature_settings.lock() {
+        Ok(settings) if settings.handoff_enabled => {}
+        Ok(_) => return Response::error("Handoff is disabled in FreeLife settings"),
+        Err(error) => {
+            tracing::error!(%error, "could not read feature settings");
+            return Response::error("could not read FreeLife settings");
+        }
+    }
     match request.op.as_str() {
         "getDevices" => Response {
             ok: true,

@@ -72,7 +72,14 @@ export interface ClipboardSettings {
 }
 
 export interface NotificationSettings {
+  enabled: boolean;
   blockedApps: string[];
+}
+
+export interface FeatureSettings {
+  airshareEnabled: boolean;
+  webcamEnabled: boolean;
+  handoffEnabled: boolean;
 }
 
 export interface HandoffEntry {
@@ -143,6 +150,12 @@ export const getNotificationSettings = () =>
 export const setNotificationSettings = (settings: NotificationSettings) =>
   invoke<void>("set_notification_settings", { settings });
 
+export const getFeatureSettings = () =>
+  invoke<FeatureSettings>("get_feature_settings");
+
+export const setFeatureSettings = (settings: FeatureSettings) =>
+  invoke<void>("set_feature_settings", { settings });
+
 export const sendNotificationReply = (
   deviceId: string,
   replyToken: string,
@@ -171,6 +184,14 @@ export const onNotificationEvent = (
 
 export const onHandoffEvent = (cb: (e: HandoffEntry) => void): Promise<UnlistenFn> =>
   listen<HandoffEntry>("handoff-event", (e) => cb(e.payload));
+
+export const onTrayToggleFeature = (
+  cb: (feature: string) => void,
+): Promise<UnlistenFn> =>
+  listen<string>("tray-toggle-feature", (e) => cb(e.payload));
+
+export const onFocusPairedDevices = (cb: () => void): Promise<UnlistenFn> =>
+  listen("focus-paired-devices", () => cb());
 
 export type CameraEvent =
   | { type: "started"; width: number; height: number }

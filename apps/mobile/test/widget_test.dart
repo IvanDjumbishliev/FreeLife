@@ -284,6 +284,22 @@ void main() {
     );
   });
 
+  testWidgets('first launch guides the user through device discovery', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    expect(
+      find.text('Searching for devices on your network...'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pair with a desktop'), findsOneWidget);
+    expect(find.text('ThinkPad'), findsWidgets);
+  });
+
   testWidgets('shows progress with speed and ETA', (tester) async {
     await pumpApp(tester);
 

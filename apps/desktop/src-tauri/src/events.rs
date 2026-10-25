@@ -108,6 +108,7 @@ pub fn forward(
     node: Arc<Node>,
     clipboard: Arc<ClipboardSync>,
     notification_settings: Arc<Mutex<NotificationSettings>>,
+    feature_settings: Arc<Mutex<crate::FeatureSettings>>,
 ) {
     let mut transfers = node.subscribe_transfers();
     let (a, n) = (app.clone(), node.clone());
@@ -219,6 +220,16 @@ pub fn forward(
                     let _ = a.emit(NOTIFICATION_EVENT, NotificationView::removed(device_id, id));
                 }
                 Ok((device_id, FreeLifeMessage::HandoffUrl { url })) => {
+                    let handoff_enabled = match feature_settings.lock() {
+                        Ok(settings) => settings.handoff_enabled,
+                        Err(error) => {
+                            tracing::error!(%error, "could not read feature settings");
+                            false
+                        }
+                    };
+                    if !handoff_enabled {
+                        continue;
+                    }
                     let parsed = match url::Url::parse(&url) {
                         Ok(parsed)
                             if matches!(parsed.scheme(), "http" | "https")
@@ -285,7 +296,9 @@ fn notify_handoff(app: &AppHandle, source: &str, domain: &str) {
 
 fn notification_is_blocked(settings: &Mutex<NotificationSettings>, app: &str) -> bool {
     match settings.lock() {
-        Ok(settings) => settings.blocked_apps.iter().any(|blocked| blocked == app),
+        Ok(settings) => {
+            !settings.enabled || settings.blocked_apps.iter().any(|blocked| blocked == app)
+        }
         Err(error) => {
             tracing::error!(%error, "could not read notification settings");
             true

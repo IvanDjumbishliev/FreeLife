@@ -10,7 +10,7 @@ use freelife_core::{DeviceId, DeviceInfo, FreeLifeMessage, OsType};
 use serde::Serialize;
 use tauri::State;
 
-use crate::AppState;
+use crate::{AppState, FeatureSettings};
 
 #[derive(Clone, Serialize)]
 pub struct DeviceView {
@@ -123,6 +123,14 @@ pub async fn send_file(
     device_id: String,
     file_path: String,
 ) -> Result<(), String> {
+    let enabled = state
+        .feature_settings
+        .lock()
+        .map_err(|error| error.to_string())?
+        .airshare_enabled;
+    if !enabled {
+        return Err("AirShare is disabled in settings".into());
+    }
     let id = parse_id(&device_id)?;
     state
         .node
@@ -130,6 +138,35 @@ pub async fn send_file(
         .await
         .map(|_| ())
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_feature_settings(state: State<'_, AppState>) -> Result<FeatureSettings, String> {
+    state
+        .feature_settings
+        .lock()
+        .map(|settings| settings.clone())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn set_feature_settings(
+    state: State<'_, AppState>,
+    settings: FeatureSettings,
+) -> Result<(), String> {
+    let bytes = serde_json::to_vec_pretty(&settings).map_err(|error| error.to_string())?;
+    std::fs::write(&state.feature_settings_path, bytes).map_err(|error| error.to_string())?;
+    *state
+        .feature_settings
+        .lock()
+        .map_err(|error| error.to_string())? = settings.clone();
+    if !settings.webcam_enabled {
+        let session = state.webcam.lock().await.take();
+        if let Some(session) = session {
+            crate::webcam::stop(&state.node, session).await;
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -222,6 +259,14 @@ pub async fn phone_webcam_start(
     state: State<'_, AppState>,
     device_id: String,
 ) -> Result<(), String> {
+    if !state
+        .feature_settings
+        .lock()
+        .map_err(|error| error.to_string())?
+        .webcam_enabled
+    {
+        return Err("Webcam is disabled in settings".into());
+    }
     let id = parse_id(&device_id)?;
     let mut webcam = state.webcam.lock().await;
     if webcam.is_some() {

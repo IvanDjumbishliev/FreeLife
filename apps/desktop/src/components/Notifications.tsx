@@ -29,6 +29,18 @@ export function Notifications({
     <>
       <section>
         <h2>Notifications</h2>
+        {settings && (
+          <label className="setting">
+            <input
+              type="checkbox"
+              checked={settings.enabled}
+              onChange={(e) =>
+                onSettingsChange({ ...settings, enabled: e.target.checked })
+              }
+            />
+            <span>Enable mirrored notifications</span>
+          </label>
+        )}
         {notifications.length === 0 ? (
           <p className="muted">No mirrored notifications yet.</p>
         ) : (
@@ -67,7 +79,10 @@ export function Notifications({
                       const blockedApps = new Set(settings.blockedApps);
                       if (e.target.checked) blockedApps.add(appPackage);
                       else blockedApps.delete(appPackage);
-                      onSettingsChange({ blockedApps: [...blockedApps] });
+                      onSettingsChange({
+                        ...settings,
+                        blockedApps: [...blockedApps],
+                      });
                     }}
                   />
                   <span>Block notifications from {appName}</span>

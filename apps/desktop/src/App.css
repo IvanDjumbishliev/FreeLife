@@ -179,6 +179,33 @@ button.primary {
   white-space: nowrap;
 }
 
+.onboarding {
+  border: 1px solid #2563eb66;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  background: #2563eb0c;
+}
+
+.scan-indicator {
+  height: 3px;
+  overflow: hidden;
+  background: #2563eb22;
+}
+
+.scan-indicator::after {
+  content: "";
+  display: block;
+  width: 35%;
+  height: 100%;
+  background: #2563eb;
+  animation: scan 1.2s ease-in-out infinite;
+}
+
+@keyframes scan {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+
 .transfer-done progress {
   accent-color: #1a7f37;
 }

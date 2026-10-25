@@ -538,6 +538,106 @@ async fn non_transfer_messages_reach_the_app() {
 }
 
 #[tokio::test]
+async fn paired_devices_exchange_all_feature_messages() {
+    let phone = start_node("phone").await;
+    let desktop = start_node("desktop").await;
+    let peer = phone
+        .node
+        .pair_at(([127, 0, 0, 1], desktop.node.port()).into())
+        .await
+        .unwrap();
+    let mut desktop_messages = desktop.node.subscribe_messages();
+    let mut phone_messages = phone.node.subscribe_messages();
+
+    let messages = [
+        FreeLifeMessage::ClipboardUpdate {
+            content_type: freelife_core::ClipboardContentType::Text,
+            payload: b"clipboard integration".to_vec(),
+        },
+        FreeLifeMessage::NotificationEvent {
+            id: "test:1".into(),
+            app_package: "dev.freelife.test".into(),
+            app_name: "Test".into(),
+            title: "Notification".into(),
+            body: "Integration test".into(),
+            timestamp: 1,
+            icon_bytes: None,
+            has_reply_action: true,
+            reply_token: Some("test-token".into()),
+            removed: false,
+        },
+        FreeLifeMessage::CameraStreamInfo {
+            width: 640,
+            height: 480,
+            fps: 30,
+        },
+        FreeLifeMessage::HandoffUrl {
+            url: "https://freelife.dev/test".into(),
+        },
+    ];
+    for message in messages {
+        let delivered = phone
+            .node
+            .send_to_many([peer.id], message.clone(), Duration::from_secs(5))
+            .await;
+        assert_eq!(delivered, 1, "message wasn't sent: {message:?}");
+        let (from, received) =
+            tokio::time::timeout(Duration::from_secs(5), desktop_messages.recv())
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(from, phone.node.device().id);
+        assert_eq!(received, message);
+    }
+
+    for message in [
+        FreeLifeMessage::CameraSubscribe,
+        FreeLifeMessage::NotificationReply {
+            reply_token: "test-token".into(),
+            text: "Reply".into(),
+        },
+        FreeLifeMessage::NotificationDismiss { id: "test:1".into() },
+    ] {
+        let delivered = desktop
+            .node
+            .send_to_many([phone.node.device().id], message.clone(), Duration::from_secs(5))
+            .await;
+        assert_eq!(delivered, 1, "message wasn't sent: {message:?}");
+        let (from, received) =
+            tokio::time::timeout(Duration::from_secs(5), phone_messages.recv())
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(from, desktop.node.device().id);
+        assert_eq!(received, message);
+    }
+
+    let source = tempfile::tempdir().unwrap();
+    let path = write_test_file(source.path(), "integration.txt", 24);
+    let mut outgoing = phone.node.subscribe_transfers();
+    let mut incoming = desktop.node.subscribe_transfers();
+    let transfer_id = phone.node.send_file(peer.id, &path).await.unwrap();
+    match final_event(&mut outgoing).await {
+        TransferEvent::TransferComplete { id, .. } => assert_eq!(id, transfer_id),
+        other => panic!("expected outgoing file completion, got {other:?}"),
+    }
+    match final_event(&mut incoming).await {
+        TransferEvent::TransferComplete {
+            id,
+            path: Some(received_path),
+            ..
+        } => {
+            assert_eq!(id, transfer_id);
+            assert_eq!(
+                std::fs::read(received_path).unwrap(),
+                std::fs::read(path).unwrap()
+            );
+        }
+        other => panic!("expected incoming file completion, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn send_to_many_skips_unreachable_devices() {
     let a = start_node("a").await;
     let b = start_node("b").await;

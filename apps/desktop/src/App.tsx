@@ -3,6 +3,7 @@ import {
   discoverDevices,
   getClipboardSettings,
   getDeviceInfo,
+  getFeatureSettings,
   getNotificationSettings,
   listPairedDevices,
   onHandoffEvent,
@@ -17,12 +18,16 @@ import {
   sendNotificationReply,
   dismissNotification,
   setClipboardSettings,
+  setFeatureSettings,
   setNotificationSettings,
+  onTrayToggleFeature,
+  onFocusPairedDevices,
   unpairDevice,
   type ClipboardSettings,
   type MirroredNotification,
   type HandoffEntry,
   type NotificationSettings,
+  type FeatureSettings,
   type DeviceInfo,
   type NearbyDevice,
   type PairedDevice,
@@ -54,11 +59,16 @@ export default function App() {
   const [clipboardNotice, setClipboardNotice] = useState<string | null>(null);
   const [notificationSettings, setNotificationSettingsState] =
     useState<NotificationSettings | null>(null);
+  const [featureSettings, setFeatureSettingsState] =
+    useState<FeatureSettings | null>(null);
   const [notifications, setNotifications] = useState<MirroredNotification[]>(
     loadNotifications,
   );
   const [notificationApps, setNotificationApps] = useState(loadNotificationApps);
   const [handoffs, setHandoffs] = useState<HandoffEntry[]>(loadHandoffs);
+  const [onboardingStep, setOnboardingStep] = useState<number | null>(() =>
+    localStorage.getItem("freelife.onboarding-complete") === "true" ? null : 0,
+  );
   const toasts = useToasts();
   const { push } = toasts;
 
@@ -82,11 +92,14 @@ export default function App() {
   useEffect(() => {
     getDeviceInfo().then(setSelf).catch((e) => push(String(e), "error"));
     getClipboardSettings().then(setClipboardSettingsState).catch((e) => push(String(e), "error"));
+    getFeatureSettings().then(setFeatureSettingsState).catch((e) => push(String(e), "error"));
     getNotificationSettings()
       .then((settings) => {
         setNotificationSettingsState(settings);
         const blocked = new Set(settings.blockedApps);
-        setNotifications((list) => list.filter((n) => !blocked.has(n.appPackage)));
+        setNotifications((list) =>
+          settings.enabled ? list.filter((n) => !blocked.has(n.appPackage)) : [],
+        );
       })
       .catch((e) => push(String(e), "error"));
     refreshPaired();
@@ -174,7 +187,21 @@ export default function App() {
     }),
   );
   useTauriEvent(() =>
-    onHandoffEvent((event) => setHandoffs((list) => [event, ...list].slice(0, 20))),
+    onHandoffEvent((event) => {
+      if (featureSettings?.handoffEnabled !== false) {
+        setHandoffs((list) => [event, ...list].slice(0, 20));
+      }
+    }),
+    [featureSettings],
+  );
+  useTauriEvent(() =>
+    onTrayToggleFeature((feature) => void toggleFeature(feature)),
+    [featureSettings, clipboardSettings, notificationSettings],
+  );
+  useTauriEvent(() =>
+    onFocusPairedDevices(() =>
+      document.getElementById("paired-devices")?.scrollIntoView({ behavior: "smooth" }),
+    ),
   );
 
   const selectedDevice = paired.find((p) => p.device.id === selected)?.device ?? null;
@@ -185,13 +212,17 @@ export default function App() {
         push("Select a paired device first", "error");
         return;
       }
+      if (featureSettings?.airshareEnabled === false) {
+        push("AirShare is disabled in Settings", "error");
+        return;
+      }
       for (const path of paths) {
         // Errors are also reported via transfer events; this catches
         // failures before the transfer starts (e.g. device unreachable).
         sendFile(selected, path).catch((e) => push(`${basename(path)}: ${e}`, "error"));
       }
     },
-    [selected, push],
+    [selected, push, featureSettings],
   );
 
   async function scan() {
@@ -202,6 +233,15 @@ export default function App() {
       push(String(e), "error");
     } finally {
       setScanning(false);
+    }
+  }
+
+  function finishOnboarding() {
+    try {
+      localStorage.setItem("freelife.onboarding-complete", "true");
+      setOnboardingStep(null);
+    } catch (error) {
+      push(`Could not save onboarding state: ${error}`, "error");
     }
   }
 
@@ -229,6 +269,7 @@ export default function App() {
     try {
       const peer = await pairDevice(device.id);
       push(`Paired with ${peer.name}`, "success");
+      if (onboardingStep !== null) setOnboardingStep(2);
       setNearby((list) => list.map((n) => (n.device.id === peer.id ? { ...n, paired: true } : n)));
       await refreshPaired();
       setSelected(peer.id);
@@ -258,10 +299,52 @@ export default function App() {
     }
   }
 
+  async function changeFeatureSettings(next: FeatureSettings) {
+    setFeatureSettingsState(next);
+    try {
+      await setFeatureSettings(next);
+    } catch (e) {
+      push(String(e), "error");
+    }
+  }
+
+  async function toggleFeature(feature: string) {
+    if (feature === "clipboard" && clipboardSettings) {
+      await changeClipboardSettings({
+        ...clipboardSettings,
+        enabled: !clipboardSettings.enabled,
+      });
+    } else if (feature === "notifications" && notificationSettings) {
+      await changeNotificationSettings({
+        ...notificationSettings,
+        enabled: !notificationSettings.enabled,
+      });
+    } else if (featureSettings && feature === "airshare") {
+      await changeFeatureSettings({
+        ...featureSettings,
+        airshareEnabled: !featureSettings.airshareEnabled,
+      });
+    } else if (featureSettings && feature === "webcam") {
+      await changeFeatureSettings({
+        ...featureSettings,
+        webcamEnabled: !featureSettings.webcamEnabled,
+      });
+    } else if (featureSettings && feature === "handoff") {
+      await changeFeatureSettings({
+        ...featureSettings,
+        handoffEnabled: !featureSettings.handoffEnabled,
+      });
+    }
+  }
+
   async function changeNotificationSettings(next: NotificationSettings) {
     setNotificationSettingsState(next);
     const blocked = new Set(next.blockedApps);
-    setNotifications((list) => list.filter((notification) => !blocked.has(notification.appPackage)));
+    setNotifications((list) =>
+      next.enabled
+        ? list.filter((notification) => !blocked.has(notification.appPackage))
+        : [],
+    );
     try {
       await setNotificationSettings(next);
     } catch (e) {
@@ -299,6 +382,9 @@ export default function App() {
     <main className="container">
       <header>
         <h1>FreeLife</h1>
+        <p className="muted">
+          {paired.filter((device) => device.connected).length} connected device(s)
+        </p>
         {self && (
           <p className="muted">
             This device: <strong>{self.name}</strong> ({self.os}) · key {self.fingerprint}
@@ -306,7 +392,85 @@ export default function App() {
         )}
       </header>
 
-      <section>
+      {onboardingStep !== null && (
+        <section className="onboarding" aria-live="polite">
+          <p className="muted small">Step {onboardingStep + 1} of 3</p>
+          {onboardingStep === 0 && (
+            <>
+              <h2>Searching for devices on your network...</h2>
+              {scanning && <div className="scan-indicator" />}
+              {nearby.length > 0 && <p>{nearby.length} device(s) found.</p>}
+              <div className="row">
+                <button onClick={scan} disabled={scanning}>
+                  {scanning ? "Searching…" : "Search"}
+                </button>
+                <button className="primary" onClick={() => setOnboardingStep(1)}>
+                  Next
+                </button>
+              </div>
+            </>
+          )}
+          {onboardingStep === 1 && (
+            <>
+              <h2>Pair with a desktop</h2>
+              <p className="muted">
+                Confirm that the six-digit PIN matches on both screens.
+              </p>
+              {nearby.filter((device) => !device.paired).map(({ device }) => (
+                <div className="row" key={device.id}>
+                  <span>{device.name} ({device.os})</span>
+                  <button onClick={() => pair(device)} disabled={pairing !== null}>
+                    {pairing === device.id ? "Pairing…" : "Pair"}
+                  </button>
+                </div>
+              ))}
+              {nearby.every((device) => device.paired) && (
+                <p className="muted">No unpaired devices found. Search again or pair later.</p>
+              )}
+              <div className="row">
+                <button onClick={scan} disabled={scanning}>
+                  {scanning ? "Searching…" : "Search again"}
+                </button>
+                {paired.length > 0 && (
+                  <button className="primary" onClick={() => setOnboardingStep(2)}>
+                    Continue
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+          {onboardingStep === 2 && (
+            <>
+              <h2>You’re connected! Choose which features to enable.</h2>
+              <p className="muted">
+                Configure clipboard sync below, manage notification filters in
+                Notifications, and start Webcam when you need it.
+              </p>
+              {clipboardSettings && (
+                <label className="setting">
+                  <input
+                    type="checkbox"
+                    checked={clipboardSettings.enabled}
+                    onChange={(event) =>
+                      void changeClipboardSettings({
+                        ...clipboardSettings,
+                        enabled: event.target.checked,
+                      })
+                    }
+                  />
+                  <span>Clipboard sync</span>
+                </label>
+              )}
+              <div className="row">
+                <button onClick={finishOnboarding}>Set up later</button>
+                <button className="primary" onClick={finishOnboarding}>Finish</button>
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
+      <section id="paired-devices">
         <h2>Paired devices</h2>
         {paired.length === 0 ? (
           <p className="muted">No paired devices yet. Scan below to pair one.</p>
@@ -331,11 +495,17 @@ export default function App() {
             ))}
           </ul>
         )}
-        <DropZone target={selectedDevice?.name ?? null} onDrop={handleDrop} />
-        <WebcamCard
-          phone={paired.find((p) => p.connected && p.device.os === "Android") ?? null}
-          onError={(message) => push(message, "error")}
-        />
+        {featureSettings?.airshareEnabled !== false ? (
+          <DropZone target={selectedDevice?.name ?? null} onDrop={handleDrop} />
+        ) : (
+          <p className="muted">AirShare is disabled in Feature settings.</p>
+        )}
+        {featureSettings?.webcamEnabled !== false && (
+          <WebcamCard
+            phone={paired.find((p) => p.connected && p.device.os === "Android") ?? null}
+            onError={(message) => push(message, "error")}
+          />
+        )}
       </section>
 
       <section>
@@ -396,6 +566,85 @@ export default function App() {
           Windows and macOS sync as you copy. Linux desktops with Wayland
           sync when the compositor allows clipboard access.
         </p>
+      </section>
+
+      <section>
+        <h2>Feature settings</h2>
+        <div className="settings">
+          {featureSettings && (
+            <>
+              <label className="setting">
+                <input
+                  type="checkbox"
+                  checked={featureSettings.airshareEnabled}
+                  onChange={(e) =>
+                    void changeFeatureSettings({
+                      ...featureSettings,
+                      airshareEnabled: e.target.checked,
+                    })
+                  }
+                />
+                <span>AirShare</span>
+              </label>
+              <label className="setting">
+                <input
+                  type="checkbox"
+                  checked={featureSettings.webcamEnabled}
+                  onChange={(e) =>
+                    void changeFeatureSettings({
+                      ...featureSettings,
+                      webcamEnabled: e.target.checked,
+                    })
+                  }
+                />
+                <span>Webcam</span>
+              </label>
+              <label className="setting">
+                <input
+                  type="checkbox"
+                  checked={featureSettings.handoffEnabled}
+                  onChange={(e) =>
+                    void changeFeatureSettings({
+                      ...featureSettings,
+                      handoffEnabled: e.target.checked,
+                    })
+                  }
+                />
+                <span>Handoff</span>
+              </label>
+            </>
+          )}
+          {clipboardSettings && (
+            <label className="setting">
+              <input
+                type="checkbox"
+                checked={clipboardSettings.enabled}
+                onChange={(e) =>
+                  void changeClipboardSettings({
+                    ...clipboardSettings,
+                    enabled: e.target.checked,
+                  })
+                }
+              />
+              <span>Clipboard</span>
+            </label>
+          )}
+          {notificationSettings && (
+            <label className="setting">
+              <input
+                type="checkbox"
+                checked={notificationSettings.enabled}
+                onChange={(e) =>
+                  void changeNotificationSettings({
+                    ...notificationSettings,
+                    enabled: e.target.checked,
+                  })
+                }
+              />
+              <span>Notifications</span>
+            </label>
+          )}
+        </div>
       </section>
 
       {prompts[0] && (

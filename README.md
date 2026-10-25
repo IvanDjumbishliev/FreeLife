@@ -123,6 +123,16 @@ FreeLife aims to support a broad range of devices, with availability varying by 
 
 **Important:** These are project targets, not a guarantee that every feature is currently implemented or tested on every platform. Consult the project issues and release notes for verified compatibility.
 
+## 📥 Install a release
+
+Tagged `v*` releases publish artifacts on the [GitHub Releases page](https://github.com/IvanDjumbishliev/FreeLife/releases):
+
+- **Android:** install `FreeLife-Android.apk` (allow installation from your browser or file manager when Android prompts). The matching `.aab` is for Play Store submission and is not directly installable.
+- **Linux:** install the `.deb` on Debian/Ubuntu with `sudo apt install ./<release>.deb`, or download the `.AppImage`, make it executable (`chmod +x FreeLife*.AppImage`), and run it. The Flatpak manifest is in [`flatpak/`](./flatpak/).
+- **Windows:** run the `.msi` installer and follow its prompts. The Windows Store manifest is in [`package/windows/`](./package/windows/).
+
+Android release builds are signed with the repository's configured Android release key. Builds require the `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD` GitHub Actions secrets; a release workflow fails rather than publishing an unsigned store bundle when they are absent.
+
 ## 🔐 Security & Privacy
 
 Your devices should work together without handing your data to an unnecessary third party.

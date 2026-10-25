@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -47,6 +49,12 @@ class _HomePageState extends State<HomePage> {
   String? _pairingWith;
   bool _clipboardOn = false;
   bool? _notificationAccess;
+  bool _notificationsOn = true;
+  bool _airshareOn = true;
+  bool _handoffOn = true;
+  bool _onboardingComplete = true;
+  int _onboardingStep = 0;
+  String? _settingsPath;
 
   /// Pairing codes waiting for an answer; the first one is on screen.
   final _prompts = <PairingUpdate>[];
@@ -79,6 +87,9 @@ class _HomePageState extends State<HomePage> {
 
     try {
       final dirs = await widget.airshare.storageDirs();
+      _settingsPath = '${dirs.dataDir}/ui-settings.json';
+      _loadUiSettings();
+      widget.notifications.setHandoffEnabled(_handoffOn);
       final name = await _deviceName();
       final self = await _backend.start(
         dataDir: dirs.dataDir,
@@ -117,7 +128,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     final notificationAccess = await widget.notifications.hasListenerAccess();
-    if (notificationAccess != null) {
+    if (notificationAccess != null && _notificationsOn) {
       widget.notifications.start(
         onError: (error) => _snack('Notification bridge: $error', error: true),
       );
@@ -204,6 +215,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _shareFiles(List<String> paths) async {
     if (paths.isEmpty || !mounted) return;
+    if (!_airshareOn) {
+      _snack('File sharing is turned off in Settings', error: true);
+      return;
+    }
     final target = await DevicePickerSheet.show(
       context,
       devices: _backend.pairedDevices(),
@@ -224,6 +239,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _shareUrl(String url) async {
     if (!mounted) return;
+    if (!_handoffOn) {
+      _snack('Handoff is turned off in Settings', error: true);
+      return;
+    }
     final desktops = _backend
         .pairedDevices()
         .where((peer) => peer.device.os != 'Android')
@@ -280,6 +299,7 @@ class _HomePageState extends State<HomePage> {
       _snack('Paired with ${peer.name}');
       if (!mounted) return;
       setState(() {
+        if (!_onboardingComplete) _onboardingStep = 2;
         _nearby = [
           for (final n in _nearby)
             n.device.id == peer.id
@@ -298,6 +318,76 @@ class _HomePageState extends State<HomePage> {
   Future<void> _unpair(PairedDevice d) async {
     await _backend.unpair(d.device.id);
     _refreshPaired();
+  }
+
+  void _loadUiSettings() {
+    final path = _settingsPath;
+    if (path == null) return;
+    try {
+      final file = File(path);
+      if (!file.existsSync()) {
+        _onboardingComplete = false;
+        return;
+      }
+      final decoded = jsonDecode(file.readAsStringSync());
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('Invalid FreeLife UI settings');
+      }
+      if (!mounted) return;
+      setState(() {
+        _onboardingComplete = decoded['onboardingComplete'] is bool
+            ? decoded['onboardingComplete'] as bool
+            : false;
+        _airshareOn = decoded['airshareOn'] is bool
+            ? decoded['airshareOn'] as bool
+            : true;
+        _handoffOn = decoded['handoffOn'] is bool
+            ? decoded['handoffOn'] as bool
+            : true;
+        _notificationsOn = decoded['notificationsOn'] is bool
+            ? decoded['notificationsOn'] as bool
+            : true;
+      });
+    } on Object catch (error) {
+      _onboardingComplete = false;
+      _snack('Could not load settings: $error', error: true);
+    }
+  }
+
+  Future<void> _saveUiSettings() async {
+    final path = _settingsPath;
+    if (path == null) return;
+    try {
+      await File(path).writeAsString(
+        jsonEncode({
+          'onboardingComplete': _onboardingComplete,
+          'airshareOn': _airshareOn,
+          'handoffOn': _handoffOn,
+          'notificationsOn': _notificationsOn,
+        }),
+      );
+    } on Object catch (error) {
+      _snack('Could not save settings: $error', error: true);
+    }
+  }
+
+  Future<void> _finishOnboarding() async {
+    setState(() => _onboardingComplete = true);
+    await _saveUiSettings();
+  }
+
+  Future<void> _setNotificationsOn(bool enabled) async {
+    if (enabled && _notificationAccess != true) {
+      try {
+        await widget.notifications.openListenerSettings();
+      } on Object catch (error) {
+        _snack('Could not open notification settings: $error', error: true);
+      }
+      return;
+    }
+    setState(() => _notificationsOn = enabled);
+    await widget.notifications.setEnabled(enabled);
+    await _saveUiSettings();
   }
 
   void _snack(String message, {bool error = false}) {
@@ -334,6 +424,39 @@ class _HomePageState extends State<HomePage> {
           body: ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
+              if (!_onboardingComplete)
+                _OnboardingCard(
+                  step: _onboardingStep,
+                  scanning: _scanning,
+                  nearby: _nearby,
+                  pairing: _pairingWith != null,
+                  paired: _paired.isNotEmpty,
+                  clipboardOn: _clipboardOn,
+                  webcamOn: widget.webcam.active.value,
+                  airshareOn: _airshareOn,
+                  handoffOn: _handoffOn,
+                  notificationsOn: _notificationsOn,
+                  onScan: _scan,
+                  onNext: () => setState(() => _onboardingStep = 1),
+                  onPair: (device) => _pair(device),
+                  onClipboardChanged: (on) async {
+                    setState(() => _clipboardOn = on);
+                    await widget.clipboard.setEnabled(on);
+                  },
+                  onWebcamChanged: (on) =>
+                      on ? widget.webcam.start() : widget.webcam.stop(),
+                  onAirshareChanged: (on) async {
+                    setState(() => _airshareOn = on);
+                    await _saveUiSettings();
+                  },
+                  onHandoffChanged: (on) async {
+                    setState(() => _handoffOn = on);
+                    widget.notifications.setHandoffEnabled(on);
+                    await _saveUiSettings();
+                  },
+                  onNotificationsChanged: _setNotificationsOn,
+                  onFinish: _finishOnboarding,
+                ),
               ListTile(
                 leading: const Icon(Icons.phone_android),
                 title: Text(self?.name ?? 'This device'),
@@ -346,12 +469,68 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const _Header('Paired devices'),
+              if (_paired.isNotEmpty)
+                Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.desktop_windows),
+                          title: Text(_paired.first.device.name),
+                          subtitle: Text(
+                            '${_paired.first.device.os} · ${_paired.first.connected ? 'Connected · local network' : 'Paired · waiting for connection'}',
+                          ),
+                          trailing: PopupMenuButton<String>(
+                            onSelected: (_) => _unpair(_paired.first),
+                            itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                value: 'unpair',
+                                child: Text('Unpair'),
+                              ),
+                            ],
+                            icon: Icon(
+                              Icons.circle,
+                              size: 12,
+                              color: _paired.first.connected
+                                  ? Colors.green
+                                  : theme.disabledColor,
+                            ),
+                          ),
+                        ),
+                        SwitchListTile(
+                          title: const Text('Clipboard'),
+                          value: _clipboardOn,
+                          onChanged: self == null
+                              ? null
+                              : (on) async {
+                                  setState(() => _clipboardOn = on);
+                                  await widget.clipboard.setEnabled(on);
+                                },
+                        ),
+                        ValueListenableBuilder<bool>(
+                          valueListenable: widget.webcam.active,
+                          builder: (context, on, _) => SwitchListTile(
+                            title: const Text('Webcam'),
+                            value: on,
+                            onChanged: self == null
+                                ? null
+                                : (value) => value
+                                      ? widget.webcam.start()
+                                      : widget.webcam.stop(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               if (_paired.isEmpty)
                 const ListTile(
                   title: Text('No paired devices yet'),
                   subtitle: Text('Scan below to pair with your computer.'),
                 ),
-              for (final d in _paired)
+              for (final d in _paired.skip(1))
                 ListTile(
                   leading: Icon(
                     Icons.circle,
@@ -368,16 +547,9 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               const _Header('Clipboard'),
-              SwitchListTile(
+              ListTile(
                 title: const Text('Clipboard sync'),
                 subtitle: Text(_clipboardOn ? 'On' : 'Off'),
-                value: _clipboardOn,
-                onChanged: self == null
-                    ? null
-                    : (on) async {
-                        setState(() => _clipboardOn = on);
-                        await widget.clipboard.setEnabled(on);
-                      },
               ),
               for (final note in clipboardLimitations)
                 Padding(
@@ -389,6 +561,11 @@ class _HomePageState extends State<HomePage> {
                 ),
               if (_notificationAccess != null) ...[
                 const _Header('Notifications'),
+                SwitchListTile(
+                  title: const Text('Mirror notifications'),
+                  value: _notificationsOn && _notificationAccess!,
+                  onChanged: _notificationAccess! ? _setNotificationsOn : null,
+                ),
                 ListTile(
                   title: Text(
                     _notificationAccess!
@@ -420,21 +597,35 @@ class _HomePageState extends State<HomePage> {
               const _Header('Webcam'),
               ValueListenableBuilder<bool>(
                 valueListenable: widget.webcam.active,
-                builder: (context, on, _) => SwitchListTile(
-                  title: const Text('Start Webcam'),
-                  subtitle: Text(
-                    on
-                        ? 'On. Paired computers can use this camera. '
-                              'A notification stays up while it runs.'
-                        : 'Off. Turn on to let a paired computer use the rear camera.',
-                  ),
-                  value: on,
-                  onChanged: self == null
-                      ? null
-                      : (value) => value
-                            ? widget.webcam.start()
-                            : widget.webcam.stop(),
+                builder: (context, on, _) => ListTile(
+                  title: const Text('Webcam'),
+                  subtitle: Text(on ? 'On' : 'Off'),
                 ),
+              ),
+              const _Header('Settings'),
+              SwitchListTile(
+                title: const Text('AirShare file transfers'),
+                subtitle: const Text('Allow sharing files to paired devices'),
+                value: _airshareOn,
+                onChanged: (value) async {
+                  setState(() => _airshareOn = value);
+                  await _saveUiSettings();
+                },
+              ),
+              SwitchListTile(
+                title: const Text('Handoff'),
+                subtitle: const Text('Allow sending links to paired devices'),
+                value: _handoffOn,
+                onChanged: (value) async {
+                  setState(() => _handoffOn = value);
+                  widget.notifications.setHandoffEnabled(value);
+                  await _saveUiSettings();
+                },
+              ),
+              SwitchListTile(
+                title: const Text('Notification mirroring'),
+                value: _notificationsOn,
+                onChanged: _setNotificationsOn,
               ),
               const _Header('Transfers'),
               if (_transfers.isEmpty)
@@ -512,6 +703,190 @@ class _Header extends StatelessWidget {
           ),
           ?trailing,
         ],
+      ),
+    );
+  }
+}
+
+class _OnboardingCard extends StatelessWidget {
+  const _OnboardingCard({
+    required this.step,
+    required this.scanning,
+    required this.nearby,
+    required this.pairing,
+    required this.paired,
+    required this.clipboardOn,
+    required this.webcamOn,
+    required this.airshareOn,
+    required this.handoffOn,
+    required this.notificationsOn,
+    required this.onScan,
+    required this.onNext,
+    required this.onPair,
+    required this.onClipboardChanged,
+    required this.onWebcamChanged,
+    required this.onAirshareChanged,
+    required this.onHandoffChanged,
+    required this.onNotificationsChanged,
+    required this.onFinish,
+  });
+
+  final int step;
+  final bool scanning;
+  final List<NearbyDevice> nearby;
+  final bool pairing;
+  final bool paired;
+  final bool clipboardOn;
+  final bool webcamOn;
+  final bool airshareOn;
+  final bool handoffOn;
+  final bool notificationsOn;
+  final VoidCallback onScan;
+  final VoidCallback onNext;
+  final ValueChanged<DeviceSummary> onPair;
+  final ValueChanged<bool> onClipboardChanged;
+  final ValueChanged<bool> onWebcamChanged;
+  final ValueChanged<bool> onAirshareChanged;
+  final ValueChanged<bool> onHandoffChanged;
+  final ValueChanged<bool> onNotificationsChanged;
+  final VoidCallback onFinish;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.all(16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 250),
+          child: switch (step) {
+            0 => Column(
+              key: const ValueKey(0),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Step 1 of 3',
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Searching for devices on your network...',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                if (scanning) const LinearProgressIndicator(),
+                if (nearby.isNotEmpty) Text('${nearby.length} device(s) found'),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton.icon(
+                      onPressed: scanning ? null : onScan,
+                      icon: const Icon(Icons.radar),
+                      label: Text(scanning ? 'Searching...' : 'Search'),
+                    ),
+                    FilledButton(onPressed: onNext, child: const Text('Next')),
+                  ],
+                ),
+              ],
+            ),
+            1 => Column(
+              key: const ValueKey(1),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Step 2 of 3',
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  pairing
+                      ? 'Confirm that the six-digit PIN matches on both devices.'
+                      : 'Pair with a desktop',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                for (final item in nearby.where((item) => !item.paired))
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(item.device.name),
+                    subtitle: Text(item.device.os),
+                    trailing: TextButton(
+                      onPressed: pairing ? null : () => onPair(item.device),
+                      child: const Text('Pair'),
+                    ),
+                  ),
+                if (nearby.isEmpty)
+                  const Text('Search again to find a desktop on your network.'),
+                if (paired)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: onNext,
+                      child: const Text('Continue'),
+                    ),
+                  ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: onScan,
+                    child: const Text('Search again'),
+                  ),
+                ),
+              ],
+            ),
+            _ => Column(
+              key: const ValueKey(2),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Step 3 of 3',
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'You’re connected! Choose which features to enable.',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('AirShare file transfers'),
+                  value: airshareOn,
+                  onChanged: onAirshareChanged,
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Clipboard sync'),
+                  value: clipboardOn,
+                  onChanged: onClipboardChanged,
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Webcam'),
+                  value: webcamOn,
+                  onChanged: onWebcamChanged,
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Notifications'),
+                  value: notificationsOn,
+                  onChanged: onNotificationsChanged,
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Handoff'),
+                  value: handoffOn,
+                  onChanged: onHandoffChanged,
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton(
+                    onPressed: onFinish,
+                    child: const Text('Finish'),
+                  ),
+                ),
+              ],
+            ),
+          },
+        ),
       ),
     );
   }
