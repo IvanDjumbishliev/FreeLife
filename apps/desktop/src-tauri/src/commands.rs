@@ -148,3 +148,41 @@ pub async fn set_clipboard_settings(
         .await
         .map_err(|e| e.to_string())
 }
+
+/// Start using a paired phone's camera as a webcam. Stats and previews
+/// arrive as `camera-event`s.
+#[tauri::command]
+pub async fn phone_webcam_start(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    device_id: String,
+) -> Result<(), String> {
+    let id = parse_id(&device_id)?;
+    let mut webcam = state.webcam.lock().await;
+    if webcam.is_some() {
+        return Err("the phone camera is already in use".into());
+    }
+    let session = crate::webcam::start(app, state.node.clone(), id).await?;
+    *webcam = Some(session);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn phone_webcam_stop(state: State<'_, AppState>) -> Result<(), String> {
+    let session = state.webcam.lock().await.take();
+    if let Some(session) = session {
+        crate::webcam::stop(&state.node, session).await;
+    }
+    Ok(())
+}
+
+/// The device whose camera is in use, if any.
+#[tauri::command]
+pub async fn phone_webcam_status(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    Ok(state
+        .webcam
+        .lock()
+        .await
+        .as_ref()
+        .map(|s| s.device.to_string()))
+}

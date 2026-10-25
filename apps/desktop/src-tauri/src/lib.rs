@@ -1,5 +1,6 @@
 mod commands;
 mod events;
+mod webcam;
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -21,6 +22,8 @@ pub struct AppState {
     pub clipboard_watcher: Mutex<Option<ClipboardWatcher>>,
     /// Devices from the most recent scan.
     pub nearby: Mutex<Vec<DiscoveredDevice>>,
+    /// The phone whose camera is currently being used as a webcam, if any.
+    pub webcam: tokio::sync::Mutex<Option<webcam::WebcamSession>>,
 }
 
 fn device_name() -> String {
@@ -83,6 +86,7 @@ pub fn run() {
                 clipboard,
                 clipboard_watcher: Mutex::new(Some(watcher)),
                 nearby: Mutex::new(Vec::new()),
+                webcam: tokio::sync::Mutex::new(None),
             });
             Ok(())
         })
@@ -96,6 +100,9 @@ pub fn run() {
             commands::send_file,
             commands::get_clipboard_settings,
             commands::set_clipboard_settings,
+            commands::phone_webcam_start,
+            commands::phone_webcam_stop,
+            commands::phone_webcam_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running FreeLife desktop");
