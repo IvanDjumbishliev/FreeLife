@@ -243,7 +243,7 @@ sudo apt install v4l2loopback-dkms      # or your distribution's package
 sudo ./scripts/freelife-webcam-setup.sh # creates /dev/video10 "FreeLife Camera"
 ```
 
-Desktop builds need FFmpeg's development packages (`libavcodec-dev libavformat-dev libavutil-dev libswscale-dev`, plus `libclang-dev` and `pkg-config`). On Windows, the webcam card reports that no virtual camera is available yet.
+Desktop builds need FFmpeg 8-compatible development packages (`libavcodec-dev libavformat-dev libavutil-dev libswscale-dev`, plus `libclang-dev` and `pkg-config`). On Windows, the webcam card reports that no virtual camera is available yet.
 
 To try AirShare, run the app on two machines on the same network. Click **Scan**, **Pair** a device, and confirm the 6-digit code on both. Then select the device and drop files onto the window. Received files go to `~/Downloads/FreeLife/`.
 

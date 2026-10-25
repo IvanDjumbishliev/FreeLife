@@ -424,7 +424,10 @@ async fn thousand_clipboard_updates_are_delivered_without_drops() {
                 Duration::from_secs(5),
             )
             .await;
-        assert_eq!(delivered, 1, "update {index} wasn't delivered to the connection");
+        assert_eq!(
+            delivered, 1,
+            "update {index} wasn't delivered to the connection"
+        );
         let (from, message) = tokio::time::timeout(Duration::from_secs(60), messages.recv())
             .await
             .expect("clipboard update load exceeded 60 seconds")

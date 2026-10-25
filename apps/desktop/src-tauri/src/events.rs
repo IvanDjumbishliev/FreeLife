@@ -148,7 +148,7 @@ pub fn forward(
     });
 
     let mut clips = clipboard.subscribe();
-    let a = app;
+    let a = app.clone();
     tauri::async_runtime::spawn(async move {
         loop {
             match clips.recv().await {

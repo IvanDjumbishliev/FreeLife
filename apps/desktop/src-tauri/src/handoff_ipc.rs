@@ -65,7 +65,7 @@ pub fn start(
                 Err(error) => return Err(error.into()),
             }
         }
-        let listener = UnixListener::bind(&socket_path)?;
+        let listener = tauri::async_runtime::block_on(async { UnixListener::bind(&socket_path) })?;
         std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))?;
         tauri::async_runtime::spawn(async move {
             loop {

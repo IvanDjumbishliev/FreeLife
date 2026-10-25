@@ -596,18 +596,23 @@ async fn paired_devices_exchange_all_feature_messages() {
             reply_token: "test-token".into(),
             text: "Reply".into(),
         },
-        FreeLifeMessage::NotificationDismiss { id: "test:1".into() },
+        FreeLifeMessage::NotificationDismiss {
+            id: "test:1".into(),
+        },
     ] {
         let delivered = desktop
             .node
-            .send_to_many([phone.node.device().id], message.clone(), Duration::from_secs(5))
+            .send_to_many(
+                [phone.node.device().id],
+                message.clone(),
+                Duration::from_secs(5),
+            )
             .await;
         assert_eq!(delivered, 1, "message wasn't sent: {message:?}");
-        let (from, received) =
-            tokio::time::timeout(Duration::from_secs(5), phone_messages.recv())
-                .await
-                .unwrap()
-                .unwrap();
+        let (from, received) = tokio::time::timeout(Duration::from_secs(5), phone_messages.recv())
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(from, desktop.node.device().id);
         assert_eq!(received, message);
     }
