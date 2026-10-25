@@ -58,7 +58,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 # Same versions arboard uses on Linux, so they're shared rather than duplicated.
 x11rb = "0.13"
 wl-clipboard-rs = "0.9"
-ffmpeg-next = { version = "9", default-features = false, features = ["codec", "format", "software-scaling"] }
+ffmpeg-next = { version = "7", default-features = false, features = ["codec", "format", "software-scaling"] }
 v4l = "0.14"
 base64 = "0.22"
 sha2 = "0.10"

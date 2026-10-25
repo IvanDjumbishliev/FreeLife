@@ -68,6 +68,27 @@ pub enum FreeLifeMessage {
     },
     Ping,
     Pong,
+    /// Desktop → phone: start sending camera frames to this device.
+    CameraSubscribe,
+    /// Desktop → phone: stop sending camera frames to this device.
+    CameraUnsubscribe,
+    /// Phone → desktop: the format of the frames that follow.
+    CameraStreamInfo {
+        width: u32,
+        height: u32,
+        fps: u32,
+    },
+    /// Phone → desktop: one H.264 access unit (Annex B), captured at
+    /// `timestamp_us` (Unix epoch microseconds, so clocks must be roughly synced).
+    CameraFrame {
+        seq: u64,
+        timestamp_us: u64,
+        keyframe: bool,
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
+    },
+    /// Phone → desktop: the camera stopped; no more frames until the next stream info.
+    CameraEnded,
 }
 
 impl FreeLifeMessage {
@@ -235,6 +256,23 @@ mod tests {
         expected.extend_from_slice(id.as_bytes());
         expected.extend_from_slice(&[2, 3, 0xaa, 0xbb, 0xcc]);
         assert_eq!(chunk.encode().unwrap(), expected);
+    }
+
+    #[test]
+    fn camera_message_tags_are_stable() {
+        // Variant indexes are wire format: these were appended after Pong (= 6).
+        assert_eq!(FreeLifeMessage::CameraSubscribe.encode().unwrap(), [7]);
+        assert_eq!(FreeLifeMessage::CameraUnsubscribe.encode().unwrap(), [8]);
+        assert_eq!(FreeLifeMessage::CameraEnded.encode().unwrap(), [11]);
+        let frame = FreeLifeMessage::CameraFrame {
+            seq: 1,
+            timestamp_us: 2,
+            keyframe: true,
+            data: vec![0xaa],
+        };
+        assert_eq!(frame.encode().unwrap()[0], 10);
+        let round = FreeLifeMessage::decode(&frame.encode().unwrap()).unwrap();
+        assert_eq!(round, frame);
     }
 
     #[test]
