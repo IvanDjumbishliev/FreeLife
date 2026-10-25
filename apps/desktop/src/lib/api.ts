@@ -75,6 +75,13 @@ export interface NotificationSettings {
   blockedApps: string[];
 }
 
+export interface HandoffEntry {
+  url: string;
+  timestamp: number;
+  sourceDeviceId: string;
+  sourceDeviceName: string;
+}
+
 export interface MirroredNotification {
   id: string;
   deviceId: string;
@@ -161,6 +168,9 @@ export const onNotificationEvent = (
   cb: (e: MirroredNotification) => void,
 ): Promise<UnlistenFn> =>
   listen<MirroredNotification>("notification-event", (e) => cb(e.payload));
+
+export const onHandoffEvent = (cb: (e: HandoffEntry) => void): Promise<UnlistenFn> =>
+  listen<HandoffEntry>("handoff-event", (e) => cb(e.payload));
 
 export type CameraEvent =
   | { type: "started"; width: number; height: number }

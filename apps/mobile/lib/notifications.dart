@@ -65,7 +65,16 @@ class NotificationBridge {
 
   Future<void> _handleCommand(rust.NotificationCommand command) async {
     try {
-      if (command.replyToken != null && command.text != null) {
+      if (command.notificationId == 'freelife-handoff' &&
+          command.replyToken != null) {
+        final opened = await _channel.invokeMethod<bool>('openHandoffUrl', {
+          'url': command.replyToken,
+          'sourceDevice': command.text ?? 'a paired device',
+        });
+        if (opened != true) {
+          _report(StateError('The handoff URL could not be opened.'));
+        }
+      } else if (command.replyToken != null && command.text != null) {
         final submitted = await _channel.invokeMethod<bool>('reply', {
           'replyToken': command.replyToken,
           'text': command.text,

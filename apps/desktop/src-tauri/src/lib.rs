@@ -1,5 +1,6 @@
 mod commands;
 mod events;
+mod handoff_ipc;
 mod webcam;
 
 use std::path::{Path, PathBuf};
@@ -87,6 +88,7 @@ pub fn run() {
             let os = OsType::current().unwrap_or(OsType::Linux);
             let config = NodeConfig::new(device_name(), os, key_store(&data_dir), data_dir.clone());
             let node = tauri::async_runtime::block_on(Node::start(config))?;
+            handoff_ipc::start(&data_dir, node.clone(), app.handle().clone())?;
             tracing::info!(
                 port = node.port(),
                 mdns = node.mdns_available(),

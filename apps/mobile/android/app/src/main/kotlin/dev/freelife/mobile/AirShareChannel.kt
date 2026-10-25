@@ -46,6 +46,7 @@ class AirShareChannel(
     // Shared files are queued until Dart asks for them, then pushed live.
     private var dartReady = false
     private val pendingShared = mutableListOf<String>()
+    private val pendingUrls = mutableListOf<String>()
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
@@ -60,6 +61,12 @@ class AirShareChannel(
                 dartReady = true
                 result.success(pendingShared.toList())
                 pendingShared.clear()
+            }
+
+            "takeSharedUrls" -> {
+                dartReady = true
+                result.success(pendingUrls.toList())
+                pendingUrls.clear()
             }
 
             "showFileReceivedNotification" -> {
@@ -91,6 +98,23 @@ class AirShareChannel(
     /** Pick up files from an ACTION_SEND / ACTION_SEND_MULTIPLE intent. */
     fun handleIntent(intent: Intent?) {
         if (intent == null || intent.getBooleanExtra(EXTRA_HANDLED, false)) return
+        if (intent.action == Intent.ACTION_SEND) {
+            val sharedUrl = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)
+                ?.toString()
+                ?.trim()
+                ?.takeIf(::isWebUrl)
+            if (sharedUrl != null) {
+                intent.putExtra(EXTRA_HANDLED, true)
+                main.post {
+                    if (dartReady) {
+                        channel.invokeMethod("sharedUrls", listOf(sharedUrl))
+                    } else {
+                        pendingUrls += sharedUrl
+                    }
+                }
+                return
+            }
+        }
         val uris = sharedUris(intent)
         if (uris.isEmpty()) return
         // Don't re-send the same intent if the activity is recreated.
@@ -124,6 +148,11 @@ class AirShareChannel(
                 .orEmpty()
 
         else -> emptyList()
+    }
+
+    private fun isWebUrl(value: String): Boolean {
+        val uri = Uri.parse(value)
+        return (uri.scheme == "https" || uri.scheme == "http") && !uri.host.isNullOrBlank()
     }
 
     /**

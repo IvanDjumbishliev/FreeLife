@@ -95,6 +95,7 @@ class FakeBackend implements FreeLifeBackend {
   final transfers = StreamController<TransferUpdate>.broadcast();
   final pairing = StreamController<PairingUpdate>.broadcast();
   final sent = <(String, String)>[];
+  final sentHandoffs = <(String, String)>[];
   final responses = <(int, bool)>[];
   Map<String, String>? startArgs;
 
@@ -140,6 +141,11 @@ class FakeBackend implements FreeLifeBackend {
   Stream<TransferUpdate> transferEvents() => transfers.stream;
 
   @override
+  Future<void> sendHandoffUrl(String deviceId, String url) async {
+    sentHandoffs.add((deviceId, url));
+  }
+
+  @override
   Stream<TransferUpdate> sendFile(String deviceId, String path) {
     sent.add((deviceId, path));
     return const Stream.empty();
@@ -148,9 +154,13 @@ class FakeBackend implements FreeLifeBackend {
 
 /// Mocks both platform channels; records airshare calls.
 class FakePlatform {
-  FakePlatform({this.launchShared = const []});
+  FakePlatform({
+    this.launchShared = const [],
+    this.launchSharedUrls = const [],
+  });
 
   final List<String> launchShared;
+  final List<String> launchSharedUrls;
   final calls = <MethodCall>[];
   late final AirShareChannel airshare;
   static const _airshare = MethodChannel(AirShareChannel.channelName);
@@ -171,6 +181,7 @@ class FakePlatform {
       return switch (call.method) {
         'getStorageDirs' => {'dataDir': '/data', 'downloadDir': '/dl/FreeLife'},
         'takeSharedFiles' => launchShared,
+        'takeSharedUrls' => launchSharedUrls,
         _ => null,
       };
     });
@@ -184,6 +195,18 @@ class FakePlatform {
       AirShareChannel.channelName,
       const StandardMethodCodec().encodeMethodCall(
         MethodCall('sharedFiles', paths),
+      ),
+      (_) {},
+    );
+  }
+
+  Future<void> shareUrl(String url) async {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    await messenger.handlePlatformMessage(
+      AirShareChannel.channelName,
+      const StandardMethodCodec().encodeMethodCall(
+        MethodCall('sharedUrls', [url]),
       ),
       (_) {},
     );
@@ -335,6 +358,25 @@ void main() {
 
     expect(backend.sent, [('laptop-id', '/cache/a.pdf')]);
     expect(find.byType(BottomSheet), findsNothing);
+  });
+
+  testWidgets('shared URLs show paired desktop picker and send handoff', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    await platform.shareUrl('https://example.com/page');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Send link to'), findsOneWidget);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text('ThinkPad'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(backend.sentHandoffs, [('laptop-id', 'https://example.com/page')]);
   });
 
   testWidgets('files shared at launch are offered once the node starts', (

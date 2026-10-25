@@ -161,6 +161,24 @@ button.primary {
   accent-color: #d1242f;
 }
 
+.handoff-history {
+  list-style: none;
+  padding: 0;
+}
+
+.handoff-history li {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid #8884;
+}
+
+.handoff-history a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .transfer-done progress {
   accent-color: #1a7f37;
 }

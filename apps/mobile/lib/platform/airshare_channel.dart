@@ -26,10 +26,12 @@ class AirShareChannel {
 
   final MethodChannel _channel;
   final _shared = StreamController<List<String>>.broadcast();
+  final _sharedUrls = StreamController<String>.broadcast();
 
   /// Files shared to FreeLife while the app is running (copied to local
   /// paths by the native side).
   Stream<List<String>> get sharedFiles => _shared.stream;
+  Stream<String> get sharedUrls => _sharedUrls.stream;
 
   Future<StorageDirs> storageDirs() async {
     final map = await _channel.invokeMapMethod<String, String>(
@@ -45,6 +47,9 @@ class AirShareChannel {
   /// call returns them once.
   Future<List<String>> takeSharedFiles() async =>
       await _channel.invokeListMethod<String>('takeSharedFiles') ?? const [];
+
+  Future<List<String>> takeSharedUrls() async =>
+      await _channel.invokeListMethod<String>('takeSharedUrls') ?? const [];
 
   /// "File received from [device]: [filename]. Tap to open."
   Future<void> showFileReceived({
@@ -68,6 +73,10 @@ class AirShareChannel {
   Future<Object?> _onNativeCall(MethodCall call) async {
     if (call.method == 'sharedFiles') {
       _shared.add(List<String>.from(call.arguments as List));
+    } else if (call.method == 'sharedUrls') {
+      for (final url in List<String>.from(call.arguments as List)) {
+        _sharedUrls.add(url);
+      }
     }
     return null;
   }
@@ -75,5 +84,6 @@ class AirShareChannel {
   void dispose() {
     _channel.setMethodCallHandler(null);
     _shared.close();
+    _sharedUrls.close();
   }
 }

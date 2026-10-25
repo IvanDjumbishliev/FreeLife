@@ -5,6 +5,7 @@ import {
   getDeviceInfo,
   getNotificationSettings,
   listPairedDevices,
+  onHandoffEvent,
   onClipboardEvent,
   onNotificationEvent,
   onPairingDismiss,
@@ -20,6 +21,7 @@ import {
   unpairDevice,
   type ClipboardSettings,
   type MirroredNotification,
+  type HandoffEntry,
   type NotificationSettings,
   type DeviceInfo,
   type NearbyDevice,
@@ -37,6 +39,7 @@ import { ClipboardSettingsPanel } from "./components/ClipboardSettings";
 import { ClipboardToast } from "./components/ClipboardToast";
 import { WebcamCard } from "./components/WebcamCard";
 import { Notifications } from "./components/Notifications";
+import { HandoffHistory } from "./components/HandoffHistory";
 
 export default function App() {
   const [self, setSelf] = useState<DeviceInfo | null>(null);
@@ -55,6 +58,7 @@ export default function App() {
     loadNotifications,
   );
   const [notificationApps, setNotificationApps] = useState(loadNotificationApps);
+  const [handoffs, setHandoffs] = useState<HandoffEntry[]>(loadHandoffs);
   const toasts = useToasts();
   const { push } = toasts;
 
@@ -106,6 +110,14 @@ export default function App() {
       console.warn("Could not persist notification app list", error);
     }
   }, [notificationApps]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("freelife.handoffs", JSON.stringify(handoffs));
+    } catch (error) {
+      console.warn("Could not persist handoff history", error);
+    }
+  }, [handoffs]);
 
   useTauriEvent(() =>
     onTransferEvent((e: TransferEvent) => {
@@ -160,6 +172,9 @@ export default function App() {
           : [event, ...withoutCurrent].slice(0, 50);
       });
     }),
+  );
+  useTauriEvent(() =>
+    onHandoffEvent((event) => setHandoffs((list) => [event, ...list].slice(0, 20))),
   );
 
   const selectedDevice = paired.find((p) => p.device.id === selected)?.device ?? null;
@@ -337,6 +352,8 @@ export default function App() {
         onDismiss={dismissMirroredNotification}
       />
 
+      <HandoffHistory entries={handoffs} />
+
       <section>
         <div className="row">
           <h2>Nearby devices</h2>
@@ -388,6 +405,28 @@ export default function App() {
       <ClipboardToast message={clipboardNotice} onDone={() => setClipboardNotice(null)} />
     </main>
   );
+}
+
+function loadHandoffs(): HandoffEntry[] {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem("freelife.handoffs") ?? "[]");
+    if (!Array.isArray(stored)) return [];
+    return stored
+      .filter((item): item is HandoffEntry => {
+        if (typeof item !== "object" || item === null) return false;
+        const value = item as Record<string, unknown>;
+        return (
+          typeof value.url === "string" &&
+          typeof value.timestamp === "number" &&
+          typeof value.sourceDeviceId === "string" &&
+          typeof value.sourceDeviceName === "string"
+        );
+      })
+      .slice(0, 20);
+  } catch (error) {
+    console.warn("Could not load handoff history", error);
+    return [];
+  }
 }
 
 function notificationKey(notification: MirroredNotification): string {

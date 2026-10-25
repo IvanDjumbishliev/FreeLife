@@ -382,7 +382,8 @@ pub async fn notification_publish(
 /// Desktop replies and dismissals are delivered to Android through the
 /// notification platform channel.
 pub fn notification_commands(sink: StreamSink<NotificationCommand>) -> anyhow::Result<()> {
-    let mut rx = node()?.subscribe_messages();
+    let node = node()?.clone();
+    let mut rx = node.subscribe_messages();
     RUNTIME.spawn(async move {
         loop {
             let command = match rx.recv().await {
@@ -394,6 +395,18 @@ pub fn notification_commands(sink: StreamSink<NotificationCommand>) -> anyhow::R
                     text: Some(text),
                     notification_id: None,
                 },
+                Ok((device_id, freelife_core::FreeLifeMessage::HandoffUrl { url })) => {
+                    if validate_handoff_url(&url).is_err() {
+                        tracing::warn!(%device_id, "ignored invalid handoff URL");
+                        continue;
+                    }
+                    // The existing notification command stream also routes Android intents.
+                    NotificationCommand {
+                        reply_token: Some(url),
+                        text: Some(peer_name(&node, device_id)),
+                        notification_id: Some("freelife-handoff".into()),
+                    }
+                }
                 Ok((_, freelife_core::FreeLifeMessage::NotificationDismiss { id })) => {
                     NotificationCommand {
                         reply_token: None,
@@ -409,6 +422,54 @@ pub fn notification_commands(sink: StreamSink<NotificationCommand>) -> anyhow::R
             }
         }
     });
+    Ok(())
+}
+
+pub async fn send_handoff_url(device_id: String, url: String) -> anyhow::Result<()> {
+    let node = node()?.clone();
+    let id = parse_id(&device_id)?;
+    validate_handoff_url(&url)?;
+    on_runtime(async move {
+        node.connection_to(id)
+            .await?
+            .send(freelife_core::FreeLifeMessage::HandoffUrl { url })
+            .await?;
+        Ok(())
+    })
+    .await
+}
+
+fn validate_handoff_url(value: &str) -> anyhow::Result<()> {
+    let (scheme, remainder) = value
+        .split_once("://")
+        .context("invalid handoff URL")?;
+    anyhow::ensure!(
+        scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https"),
+        "only http and https URLs can be handed off"
+    );
+    let authority = remainder
+        .split(|character| matches!(character, '/' | '?' | '#'))
+        .next()
+        .unwrap_or_default();
+    anyhow::ensure!(
+        !authority.is_empty()
+            && !authority.chars().any(|character| {
+                character.is_whitespace()
+                    || character.is_control()
+                    || character == '\\'
+            }),
+        "invalid handoff URL authority"
+    );
+    let host_and_port = authority.rsplit('@').next().unwrap_or_default();
+    let host = if host_and_port.starts_with('[') {
+        host_and_port
+            .split_once(']')
+            .map(|(host, _)| host.trim_start_matches('['))
+            .unwrap_or_default()
+    } else {
+        host_and_port.split(':').next().unwrap_or_default()
+    };
+    anyhow::ensure!(!host.is_empty(), "invalid handoff URL host");
     Ok(())
 }
 

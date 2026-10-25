@@ -72,6 +72,21 @@ Move your workflow between devices without starting over.
 - Discover paired devices and route handoff requests locally.
 - Explore optional encrypted relay support for connections outside your local network.
 
+#### Browser extension setup
+
+The extension uses the FreeLife desktop app's local native-messaging endpoint to list paired devices and send the active tab. Start the desktop app before using the extension and keep the devices paired.
+
+```bash
+cd extension
+npm run package:all
+node install-host.js chrome <Chrome-Web-Store-extension-ID>
+node install-host.js firefox
+```
+
+Load the generated `dist/freelife-handoff-chrome.zip` in Chrome Web Store Developer Dashboard or `dist/freelife-handoff-firefox.xpi` in Firefox Add-ons. For local development, load `extension/` as an unpacked extension in Chrome, or use `manifest.firefox.json` as the Firefox manifest. The default shortcut is **Ctrl+Shift+H**.
+
+The native host requires Node.js on `PATH`. It connects to the desktop app over a user-local Unix socket or Windows named pipe; URLs are sent over the existing encrypted FreeLife device connection. The Android share sheet accepts web links, and received handoffs open in the default browser. Desktop Handoff History retains the latest 20 links.
+
 ---
 
 ## 🛠️ Technology Stack

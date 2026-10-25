@@ -1,0 +1,11 @@
+{
+  "name": "freelife-handoff-extension",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "package:chrome": "node package.js chrome",
+    "package:firefox": "node package.js firefox",
+    "package:all": "node package.js all",
+    "test": "node --test tests/*.test.js"
+  }
+}

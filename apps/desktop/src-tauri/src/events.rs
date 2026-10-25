@@ -24,6 +24,7 @@ pub const PAIRING_PROMPT: &str = "pairing-prompt";
 pub const PAIRING_DISMISS: &str = "pairing-dismiss";
 pub const CLIPBOARD_EVENT: &str = "clipboard-event";
 pub const NOTIFICATION_EVENT: &str = "notification-event";
+pub const HANDOFF_EVENT: &str = "handoff-event";
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -73,6 +74,33 @@ struct PromptView {
 #[serde(rename_all = "camelCase")]
 struct DismissView {
     request_id: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HandoffView {
+    url: String,
+    timestamp: u64,
+    source_device_id: String,
+    source_device_name: String,
+}
+
+pub fn record_local_handoff(app: &AppHandle, node: &Node, url: String) {
+    let device = node.device();
+    let view = HandoffView {
+        url,
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .try_into()
+            .unwrap_or(u64::MAX),
+        source_device_id: device.id.to_string(),
+        source_device_name: device.name.clone(),
+    };
+    if let Err(error) = app.emit(HANDOFF_EVENT, view) {
+        tracing::warn!(%error, "could not publish handoff history event");
+    }
 }
 
 pub fn forward(
@@ -190,11 +218,69 @@ pub fn forward(
                 Ok((device_id, FreeLifeMessage::NotificationDismiss { id })) => {
                     let _ = a.emit(NOTIFICATION_EVENT, NotificationView::removed(device_id, id));
                 }
+                Ok((device_id, FreeLifeMessage::HandoffUrl { url })) => {
+                    let parsed = match url::Url::parse(&url) {
+                        Ok(parsed)
+                            if matches!(parsed.scheme(), "http" | "https")
+                                && parsed.host_str().is_some() =>
+                        {
+                            parsed
+                        }
+                        _ => {
+                            tracing::warn!(%device_id, "ignored invalid handoff URL");
+                            continue;
+                        }
+                    };
+                    let source_device_name = notification_node
+                        .paired_devices()
+                        .into_iter()
+                        .find(|device| device.id == device_id)
+                        .map(|device| device.name)
+                        .unwrap_or_else(|| "Unknown device".into());
+                    let view = HandoffView {
+                        url: url.clone(),
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis()
+                            .try_into()
+                            .unwrap_or(u64::MAX),
+                        source_device_id: device_id.to_string(),
+                        source_device_name: source_device_name.clone(),
+                    };
+                    notify_handoff(&a, &source_device_name, parsed.host_str().unwrap_or_default());
+                    if let Err(error) = a.emit(HANDOFF_EVENT, view) {
+                        tracing::warn!(%error, "could not publish handoff event");
+                    }
+                    std::thread::spawn(move || {
+                        if let Err(error) = open::that(&url) {
+                            tracing::warn!(%error, %url, "could not open handed-off URL");
+                        }
+                    });
+                }
                 Ok(_) | Err(RecvError::Lagged(_)) => continue,
                 Err(RecvError::Closed) => break,
             }
         }
     });
+}
+
+fn notify_handoff(app: &AppHandle, source: &str, domain: &str) {
+    let title = format!("Handoff from {source}: {domain}");
+    let body = "Opening in browser.";
+    #[cfg(target_os = "linux")]
+    let result = notify_rust::Notification::new()
+        .appname("FreeLife")
+        .summary(&title)
+        .body(&body)
+        .show()
+        .map(|_| ());
+    #[cfg(not(target_os = "linux"))]
+    let result = app.notification().builder().title(title).body(body).show();
+    if let Err(error) = result {
+        tracing::warn!(%error, "could not show handoff notification");
+    }
+    let _ = app;
 }
 
 fn notification_is_blocked(settings: &Mutex<NotificationSettings>, app: &str) -> bool {

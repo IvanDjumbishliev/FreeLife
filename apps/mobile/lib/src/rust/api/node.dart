@@ -42,6 +42,12 @@ bool respondPairing({required PlatformInt64 requestId, required bool accept}) =>
 Future<bool> unpairDevice({required String deviceId}) =>
     RustLib.instance.api.crateApiNodeUnpairDevice(deviceId: deviceId);
 
+Future<void> sendHandoffUrl({required String deviceId, required String url}) =>
+    RustLib.instance.api.crateApiNodeSendHandoffUrl(
+      deviceId: deviceId,
+      url: url,
+    );
+
 /// Pairing prompts (incoming and outgoing) for the UI.
 Stream<PairingUpdate> pairingEvents() =>
     RustLib.instance.api.crateApiNodePairingEvents();

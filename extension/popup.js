@@ -1,36 +1,46 @@
 const api = globalThis.browser ?? globalThis.chrome;
 
-const $ = (id) => document.getElementById(id);
-
-async function activeTab() {
-  const [tab] = await api.tabs.query({ active: true, currentWindow: true });
-  return tab;
-}
-
-async function renderHistory() {
-  const { history = [] } = await api.storage.local.get("history");
-  $("history").replaceChildren(
-    ...history.map(({ url }) => {
-      const li = document.createElement("li");
-      li.textContent = url;
-      li.title = url;
-      return li;
-    }),
-  );
-}
+const current = document.getElementById("current");
+const devices = document.getElementById("devices");
+const status = document.getElementById("status");
 
 async function init() {
-  const tab = await activeTab();
-  $("current").textContent = tab?.url ?? "No active tab";
-  $("send").disabled = !tab?.url;
+  try {
+    const [tab] = await api.tabs.query({ active: true, currentWindow: true });
+    const url = tab?.url;
+    current.textContent = url ?? "No active tab";
+    if (!url || !/^https?:\/\//i.test(url)) {
+      status.textContent = "Only http and https tabs can be handed off.";
+      return;
+    }
 
-  $("send").addEventListener("click", async () => {
-    const res = await api.runtime.sendMessage({ type: "handoff", url: tab.url });
-    $("status").textContent = res?.ok ? "Sent (stub — not delivered yet)" : "Failed";
-    renderHistory();
-  });
-
-  renderHistory();
+    const response = await api.runtime.sendMessage({ type: "listDevices" });
+    for (const device of response.devices ?? []) {
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.textContent = `Send to ${device.name}`;
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        status.textContent = `Sending to ${device.name}…`;
+        try {
+          await api.runtime.sendMessage({
+            type: "handoff",
+            deviceId: device.id,
+            url,
+          });
+          status.textContent = `Sent to ${device.name}`;
+        } catch (error) {
+          status.textContent = error.message;
+          button.disabled = false;
+        }
+      });
+      item.append(button);
+      devices.append(item);
+    }
+    if (!devices.childElementCount) status.textContent = "No paired devices found.";
+  } catch (error) {
+    status.textContent = error.message;
+  }
 }
 
 init();

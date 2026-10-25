@@ -162,6 +162,11 @@ abstract class RustLibApi extends BaseApi {
   Stream<TransferUpdate> crateApiNodeTransferEvents();
 
   Future<bool> crateApiNodeUnpairDevice({required String deviceId});
+
+  Future<void> crateApiNodeSendHandoffUrl({
+    required String deviceId,
+    required String url,
+  });
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -904,6 +909,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiNodeUnpairDeviceConstMeta =>
       const TaskConstMeta(debugName: "unpair_device", argNames: ["deviceId"]);
+
+  @override
+  Future<void> crateApiNodeSendHandoffUrl({
+    required String deviceId,
+    required String url,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(deviceId, serializer);
+          sse_encode_String(url, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 24,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiNodeSendHandoffUrlConstMeta,
+        argValues: [deviceId, url],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiNodeSendHandoffUrlConstMeta => const TaskConstMeta(
+    debugName: "send_handoff_url",
+    argNames: ["deviceId", "url"],
+  );
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {

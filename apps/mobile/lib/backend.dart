@@ -42,6 +42,8 @@ abstract interface class FreeLifeBackend {
   /// Every transfer in both directions.
   Stream<TransferUpdate> transferEvents();
 
+  Future<void> sendHandoffUrl(String deviceId, String url);
+
   /// Updates for this one transfer; closes after it completes or fails.
   Stream<TransferUpdate> sendFile(String deviceId, String path);
 }
@@ -85,6 +87,10 @@ class RustBackend implements FreeLifeBackend {
 
   @override
   Stream<TransferUpdate> transferEvents() => rust.transferEvents();
+
+  @override
+  Future<void> sendHandoffUrl(String deviceId, String url) =>
+      rust.sendHandoffUrl(deviceId: deviceId, url: url);
 
   @override
   Stream<TransferUpdate> sendFile(String deviceId, String path) =>

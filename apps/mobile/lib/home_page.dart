@@ -101,6 +101,7 @@ class _HomePageState extends State<HomePage> {
       ..add(_backend.transferEvents().listen(_onTransfer))
       ..add(_backend.pairingEvents().listen(_onPairing))
       ..add(widget.airshare.sharedFiles.listen(_shareFiles));
+    _subscriptions.add(widget.airshare.sharedUrls.listen(_shareUrl));
     _refreshPaired();
     // Connection state isn't evented yet, so poll gently.
     _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
@@ -110,6 +111,10 @@ class _HomePageState extends State<HomePage> {
 
     final launched = await widget.airshare.takeSharedFiles();
     if (launched.isNotEmpty) await _shareFiles(launched);
+    final launchedUrls = await widget.airshare.takeSharedUrls();
+    for (final url in launchedUrls) {
+      await _shareUrl(url);
+    }
 
     final notificationAccess = await widget.notifications.hasListenerAccess();
     if (notificationAccess != null) {
@@ -214,6 +219,45 @@ class _HomePageState extends State<HomePage> {
             null,
             onError: (Object e) => _snack('${basename(path)}: $e', error: true),
           );
+    }
+  }
+
+  Future<void> _shareUrl(String url) async {
+    if (!mounted) return;
+    final desktops = _backend
+        .pairedDevices()
+        .where((peer) => peer.device.os != 'Android')
+        .toList();
+    if (desktops.isEmpty) {
+      _snack('Pair a desktop device before handing off links', error: true);
+      return;
+    }
+    final target = await showModalBottomSheet<PairedDevice>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(title: Text('Send link to')),
+            for (final peer in desktops)
+              ListTile(
+                leading: const Icon(Icons.computer),
+                title: Text(peer.device.name),
+                subtitle: Text(
+                  peer.connected ? 'Connected' : 'Connect when sending',
+                ),
+                onTap: () => Navigator.pop(context, peer),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (target == null) return;
+    try {
+      await _backend.sendHandoffUrl(target.device.id, url);
+      _snack('Link sent to ${target.device.name}');
+    } on Object catch (error) {
+      _snack('Could not send link: $error', error: true);
     }
   }
 

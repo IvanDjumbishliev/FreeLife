@@ -30,6 +30,15 @@ class NotificationBridgeChannel(
                 activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
                 result.success(null)
             }
+            "openHandoffUrl" -> {
+                val url = call.argument<String>("url")
+                if (url == null || !isWebUrl(url)) {
+                    result.error("BAD_URL", "Only http and https URLs can be opened", null)
+                } else {
+                    activity.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+                    result.success(true)
+                }
+            }
             "reply" -> {
                 val token = call.argument<String>("replyToken")
                 val text = call.argument<String>("text")
@@ -58,6 +67,11 @@ class NotificationBridgeChannel(
         ).orEmpty()
         val service = ComponentName(activity, NotificationListener::class.java)
         return enabled.split(':').any { ComponentName.unflattenFromString(it) == service }
+    }
+
+    private fun isWebUrl(value: String): Boolean {
+        val uri = android.net.Uri.parse(value)
+        return (uri.scheme == "https" || uri.scheme == "http") && !uri.host.isNullOrBlank()
     }
 
     fun dispose() {
